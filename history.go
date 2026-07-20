@@ -43,7 +43,9 @@ func NewHistoryStore(mode string) *HistoryStore {
 }
 
 // SetMode switches between RAM and disk persistence. Switching to disk
-// flushes the current RAM entries so nothing already transcribed is lost.
+// leaves the file untouched: existing RAM entries stay visible in the view
+// but are never written; only transcriptions made after the switch are
+// appended to the file.
 func (s *HistoryStore) SetMode(mode string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -55,24 +57,33 @@ func (s *HistoryStore) SetMode(mode string) {
 	s.disk = wantDisk
 
 	if s.disk {
+		// View = file content + RAM entries the file does not have yet
+		// (entries loaded during an earlier disk period would duplicate).
 		loaded := s.loadFileLocked()
-		if len(s.entries) > 0 {
-			// RAM→disk: rewrite the file as loaded entries + RAM entries.
-			merged := append(loaded, s.entries...)
-			if len(merged) > maxHistoryEntries {
-				merged = merged[len(merged)-maxHistoryEntries:]
+		merged := loaded
+		for _, e := range s.entries {
+			if !containsEntry(loaded, e) {
+				merged = append(merged, e)
 			}
-			s.entries = merged
-			if err := s.rewriteFileLocked(); err != nil {
-				info("[HIST] Flush to disk failed: %v", err)
-			}
-		} else {
-			s.entries = loaded
 		}
-		info("[HIST] Disk mode on — %d entries at %s", len(s.entries), s.path)
+		if len(merged) > maxHistoryEntries {
+			merged = merged[len(merged)-maxHistoryEntries:]
+		}
+		s.entries = merged
+		info("[HIST] Disk mode on — %d entries shown, new ones append to %s", len(s.entries), s.path)
 	} else {
 		info("[HIST] RAM mode on — file kept as-is, no further appends")
 	}
+}
+
+// containsEntry reports whether list already holds e (same time and text).
+func containsEntry(list []HistoryEntry, e HistoryEntry) bool {
+	for _, x := range list {
+		if x.Text == e.Text && x.Time.Equal(e.Time) {
+			return true
+		}
+	}
+	return false
 }
 
 // Add records a new transcript.
@@ -160,33 +171,4 @@ func (s *HistoryStore) appendFileLocked(e HistoryEntry) error {
 	}
 	_, err = f.Write(append(data, '\n'))
 	return err
-}
-
-func (s *HistoryStore) rewriteFileLocked() error {
-	tmp := s.path + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	w := bufio.NewWriter(f)
-	for _, e := range s.entries {
-		data, err := json.Marshal(e)
-		if err != nil {
-			f.Close()
-			os.Remove(tmp)
-			return err
-		}
-		w.Write(data)
-		w.WriteByte('\n')
-	}
-	if err := w.Flush(); err != nil {
-		f.Close()
-		os.Remove(tmp)
-		return err
-	}
-	if err := f.Close(); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	return os.Rename(tmp, s.path)
 }
