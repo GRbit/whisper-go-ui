@@ -3,7 +3,7 @@
   import Settings from './Settings.svelte'
   import History from './History.svelte'
   import { GetConfig, GetState, ToggleRecording } from '../wailsjs/go/main/App.js'
-  import { EventsOn, EventsEmit } from '../wailsjs/runtime/runtime.js'
+  import { EventsOn, EventsEmit, Quit } from '../wailsjs/runtime/runtime.js'
 
   let tab: 'settings' | 'history' = $state('settings')
   let appState: string = $state('waiting')
@@ -30,6 +30,14 @@
     document.addEventListener('visibilitychange', () =>
       EventsEmit('window:visibility', document.visibilityState === 'visible'),
     )
+    // Ctrl+Q in the window (not global) quits the app for real — unlike the
+    // close button, which only hides to tray.
+    window.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'q') {
+        e.preventDefault()
+        Quit()
+      }
+    })
   })
 </script>
 
