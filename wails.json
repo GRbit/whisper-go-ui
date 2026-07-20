@@ -2,6 +2,9 @@
   "$schema": "https://wails.io/schemas/config.v2.json",
   "name": "whisper-go-ui",
   "outputfilename": "whisper-go-ui",
+  "preBuildHooks": {
+    "*/*": "go run whisper-go-ui/icons/gen -out .."
+  },
   "frontend:install": "npm install",
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",

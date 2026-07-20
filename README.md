@@ -46,8 +46,11 @@ go vet -tags webkit2_41 ./...
 go test -tags webkit2_41 -race ./...
 ```
 
-Tray icons are committed as PNGs; regenerate with `go generate ./icons`
-(also renders `build/appicon.png` and the `build/icons/*.png` sizes below).
+All icons (tray states, window/taskbar icon) are rendered at runtime by the
+`icons` package — no image files are committed. A pre-build hook in
+`wails.json` writes the generated PNGs to `build/icons/` (hicolor set for
+`make install`) and `build/appicon.png` (wails packaging) on every build;
+both paths are gitignored build artifacts.
 
 ## Desktop integration (optional)
 
@@ -60,11 +63,11 @@ install anything into your home directory; run `make install` (or
 from the `whisper-go-ui` directory:
 
 ```sh
-# the binary
+# the binary (build first: wails build -tags webkit2_41)
 mkdir -p ~/.local/bin
 cp build/bin/whisper-go-ui ~/.local/bin/whisper-go-ui
 
-# icons for the hicolor theme (pre-rendered, from build/icons/)
+# icons for the hicolor theme (rendered into build/icons/ by the build)
 for size in 16 22 24 32 48 64 128 256 512; do
   mkdir -p ~/.local/share/icons/hicolor/${size}x${size}/apps
   cp build/icons/${size}.png ~/.local/share/icons/hicolor/${size}x${size}/apps/whisper-go-ui.png

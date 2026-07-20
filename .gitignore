@@ -1,4 +1,7 @@
 .claude
 build/bin
+build/icons
+build/appicon.png
 node_modules
 frontend/dist
+wails

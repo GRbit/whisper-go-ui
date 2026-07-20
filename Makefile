@@ -5,6 +5,8 @@ DESKTOP_FILE := $(PREFIX)/share/applications/whisper-go-ui.desktop
 
 .PHONY: build install uninstall test vet
 
+# The wails.json preBuildHooks entry renders build/icons/*.png and
+# build/appicon.png before compiling, so `wails build` is self-contained.
 build:
 	wails build -tags webkit2_41
 

@@ -9,13 +9,12 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/linux"
+
+	"whisper-go-ui/icons"
 )
 
 //go:embed all:frontend/dist
 var assets embed.FS
-
-//go:embed build/appicon.png
-var appIcon []byte
 
 // ensureWebKitRenderer disables WebKit's DMABUF renderer when no GPU render
 // node is accessible — without this, webkit_web_view_new hangs forever on
@@ -44,7 +43,7 @@ func main() {
 		Height:            640,
 		HideWindowOnClose: true, // close button hides to tray
 		Linux: &linux.Options{
-			Icon:        appIcon, // window manager / taskbar icon
+			Icon:        icons.App(512), // window manager / taskbar icon
 			ProgramName: "whisper-go-ui",
 			// Keep the default that applies when options.Linux is nil —
 			// GPU compositing is what hangs WebKit on this machine.
