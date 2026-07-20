@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sync/atomic"
+	"time"
 
 	"github.com/gordonklaus/portaudio"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -152,6 +153,19 @@ func (a *App) ValidateHotkey(s string) string {
 		return fmt.Sprintf("%v — valid keys: %s", err, validKeyNames())
 	}
 	return ""
+}
+
+// hotkeyCaptureTimeout bounds how long CaptureHotkey waits for a combo.
+const hotkeyCaptureTimeout = 10 * time.Second
+
+// CaptureHotkey blocks until the user presses a key combo and returns it as
+// a hotkey string ("ctrl+shift+r"). Empty string means cancelled (Escape),
+// timed out, or a capture already in progress.
+func (a *App) CaptureHotkey() string {
+	if a.hotkey == nil { // bound method callable before startup finishes
+		return ""
+	}
+	return a.hotkey.Capture(hotkeyCaptureTimeout)
 }
 
 // ListInputDevices returns all PortAudio input devices for the Settings dropdown.

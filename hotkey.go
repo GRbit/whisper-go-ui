@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	hook "github.com/robotn/gohook"
 )
@@ -62,6 +63,75 @@ var keyRawcodes = map[string][]uint16{
 	"f1": {65470}, "f2": {65471}, "f3": {65472}, "f4": {65473},
 	"f5": {65474}, "f6": {65475}, "f7": {65476}, "f8": {65477},
 	"f9": {65478}, "f10": {65479}, "f11": {65480}, "f12": {65481},
+}
+
+// ── combo capture (reverse mapping: observed rawcodes -> combo string) ────────
+
+// modifierOrder fixes the canonical modifier names and their order in
+// captured combo strings.
+var modifierOrder = []struct {
+	name  string
+	codes []uint16
+}{
+	{"ctrl", []uint16{65507, 65508}},
+	{"shift", []uint16{65505, 65506}},
+	{"alt", []uint16{65513, 65514}},
+	{"win", []uint16{65515, 65516}},
+}
+
+// modifierCodes is the set of all modifier rawcodes.
+var modifierCodes = map[uint16]bool{}
+
+// rawcodeKeyName maps non-modifier rawcodes to their canonical key name.
+var rawcodeKeyName = map[uint16]string{}
+
+const escapeRawcode = 65307
+
+func init() {
+	for _, m := range modifierOrder {
+		for _, c := range m.codes {
+			modifierCodes[c] = true
+		}
+	}
+	// Aliases share rawcodes with a canonical name; skip them so the
+	// reverse map is deterministic. Modifiers are handled by modifierOrder.
+	skip := map[string]bool{
+		"ctrl": true, "control": true, "shift": true, "alt": true,
+		"super": true, "win": true, "meta": true,
+		"return": true, "esc": true, "del": true,
+	}
+	for name, codes := range keyRawcodes {
+		if skip[name] {
+			continue
+		}
+		for _, c := range codes {
+			rawcodeKeyName[c] = name
+		}
+	}
+}
+
+// captureCombo builds a combo string from the currently held keys and the
+// rawcode of the key that was just pressed. Returns ok=false when rc is a
+// modifier (combo not complete yet) or an unknown key.
+func captureCombo(pressed map[uint16]bool, rc uint16) (string, bool) {
+	if modifierCodes[rc] {
+		return "", false
+	}
+	name, known := rawcodeKeyName[rc]
+	if !known {
+		return "", false
+	}
+	var parts []string
+	for _, m := range modifierOrder {
+		for _, c := range m.codes {
+			if pressed[c] {
+				parts = append(parts, m.name)
+				break
+			}
+		}
+	}
+	parts = append(parts, name)
+	return strings.Join(parts, "+"), true
 }
 
 // ParsedHotkey is an ordered set of keys that must all be pressed simultaneously.
@@ -154,9 +224,10 @@ func validKeyNames() string {
 // combo can be hot-swapped without restarting the loop and registration can
 // never fail or conflict with other applications.
 type HotkeyListener struct {
-	mu    sync.RWMutex
-	combo *ParsedHotkey
-	fire  func() // called once per combo press (toggle semantics)
+	mu      sync.RWMutex
+	combo   *ParsedHotkey
+	fire    func()      // called once per combo press (toggle semantics)
+	capture chan string // non-nil while a combo capture is in progress
 }
 
 func NewHotkeyListener(combo *ParsedHotkey, fire func()) *HotkeyListener {
@@ -175,6 +246,57 @@ func (h *HotkeyListener) getCombo() *ParsedHotkey {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.combo
+}
+
+// Capture blocks until the user presses a complete combo (modifiers + one
+// regular key), presses Escape (returns ""), or the timeout expires
+// (returns ""). Only one capture can be active at a time; a second call
+// while one is running returns "" immediately.
+func (h *HotkeyListener) Capture(timeout time.Duration) string {
+	ch := make(chan string, 1)
+	h.mu.Lock()
+	if h.capture != nil {
+		h.mu.Unlock()
+		return ""
+	}
+	h.capture = ch
+	h.mu.Unlock()
+	info("[HOTKEY] Combo capture started (Escape cancels, %.0fs timeout)", timeout.Seconds())
+
+	select {
+	case combo := <-ch:
+		return combo
+	case <-time.After(timeout):
+		h.mu.Lock()
+		if h.capture == ch {
+			h.capture = nil
+		}
+		h.mu.Unlock()
+		// The event loop may have delivered right before we cleared.
+		select {
+		case combo := <-ch:
+			return combo
+		default:
+		}
+		info("[HOTKEY] Combo capture timed out")
+		return ""
+	}
+}
+
+func (h *HotkeyListener) getCapture() chan string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.capture
+}
+
+// finishCapture ends the capture owning ch and delivers the result.
+func (h *HotkeyListener) finishCapture(ch chan string, combo string) {
+	h.mu.Lock()
+	if h.capture == ch {
+		h.capture = nil
+	}
+	h.mu.Unlock()
+	ch <- combo // buffered; never blocks
 }
 
 // Run blocks on the gohook event stream until hook.End() is called.
@@ -198,6 +320,22 @@ func (h *HotkeyListener) Run() {
 		case ev.Kind == 3 || ev.Kind == 4:
 			isRepeat := pressed[rc]
 			pressed[rc] = true
+
+			// Capture mode: swallow events until a full combo (or Escape)
+			// arrives; the active hotkey must not fire off captured keys.
+			if ch := h.getCapture(); ch != nil {
+				if isRepeat {
+					continue
+				}
+				if rc == escapeRawcode {
+					info("[HOTKEY] Combo capture cancelled with Escape")
+					h.finishCapture(ch, "")
+				} else if combo, ok := captureCombo(pressed, rc); ok {
+					info("[HOTKEY] Captured combo: %s", combo)
+					h.finishCapture(ch, combo)
+				}
+				continue
+			}
 
 			if !isRepeat && hk.isTriggered(pressed) && !comboFired {
 				comboFired = true

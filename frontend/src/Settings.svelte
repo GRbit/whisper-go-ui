@@ -4,6 +4,7 @@
     GetConfig,
     SaveConfig,
     ValidateHotkey,
+    CaptureHotkey,
     ListInputDevices,
   } from '../wailsjs/go/main/App.js'
   import { main } from '../wailsjs/go/models'
@@ -22,6 +23,34 @@
   async function onHotkeyInput() {
     if (!cfg) return
     hotkeyError = await ValidateHotkey(cfg.hotkey)
+  }
+
+  let capturing = $state(false)
+
+  // While capturing, the pressed keys must reach neither the page (Ctrl+Q
+  // quit, typing into inputs) nor the browser defaults — swallow everything
+  // in the capture phase; the backend observes the keys via XRecord anyway.
+  function swallowKeys(e: KeyboardEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
+  async function captureHotkey() {
+    if (!cfg || capturing) return
+    capturing = true
+    window.addEventListener('keydown', swallowKeys, true)
+    window.addEventListener('keyup', swallowKeys, true)
+    try {
+      const combo = await CaptureHotkey()
+      if (combo && cfg) {
+        cfg.hotkey = combo
+        hotkeyError = await ValidateHotkey(combo)
+      }
+    } finally {
+      window.removeEventListener('keydown', swallowKeys, true)
+      window.removeEventListener('keyup', swallowKeys, true)
+      capturing = false
+    }
   }
 
   async function save() {
@@ -97,14 +126,22 @@
       <h2>Hotkey</h2>
       <label>
         <span>Combo (toggle: press to start, press again to stop)</span>
-        <input
-          type="text"
-          bind:value={cfg.hotkey}
-          oninput={onHotkeyInput}
-          placeholder="ctrl+shift+r"
-          class:invalid={hotkeyError !== ''}
-        />
+        <div class="hotkey-row">
+          <input
+            type="text"
+            bind:value={cfg.hotkey}
+            oninput={onHotkeyInput}
+            placeholder="ctrl+shift+r"
+            class:invalid={hotkeyError !== ''}
+          />
+          <button type="button" class="capture" onclick={captureHotkey} disabled={capturing}>
+            {capturing ? 'Press keys…' : 'Capture'}
+          </button>
+        </div>
       </label>
+      {#if capturing}
+        <p class="hint">Press the key combo now — Esc cancels.</p>
+      {/if}
       {#if hotkeyError}
         <p class="field-error">{hotkeyError}</p>
       {/if}
@@ -266,6 +303,29 @@
 
   .hint {
     font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .hotkey-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .hotkey-row input {
+    flex: 1;
+  }
+
+  .capture {
+    background: var(--bg-input);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0 16px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  .capture:disabled {
     color: var(--text-dim);
   }
 
