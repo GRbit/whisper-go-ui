@@ -65,7 +65,7 @@ WM_CLASS (`whisper-go-ui`) against a `.desktop` entry and looking the icon up
 in the icon theme at small fixed sizes. The app deliberately does **not**
 install anything into your home directory; run `make install` (or
 `make uninstall`) to apply exactly the steps below, or run them manually
-from the `whisper-go-ui` directory:
+from the repository root:
 
 ```sh
 # the binary (build first: wails build -tags webkit2_41)
