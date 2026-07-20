@@ -1,0 +1,219 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+)
+
+// History storage modes.
+const (
+	HistoryRAM  = "ram"  // keep transcripts in memory only
+	HistoryDisk = "disk" // additionally persist to a JSONL file under XDG data dir
+)
+
+// Config is the persisted application configuration.
+// JSON tags match the legacy ~/.config/whisper-go-ui/config.json schema so an
+// existing file from the previous app version loads cleanly; new fields simply
+// get defaults when absent.
+type Config struct {
+	ASRURL     string `json:"asrUrl"`
+	Language   string `json:"language"`
+	ASREngine  string `json:"asrEngine"`
+	ASRTimeout int    `json:"asrTimeout"`
+	ASRRetries int    `json:"asrRetries"`
+	HotkeyStr  string `json:"hotkey"`
+	HotkeyMode string `json:"hotkeyMode"` // legacy; the app is toggle-only now
+	DeviceID   int    `json:"deviceId"`   // requested PortAudio device (-1 = auto)
+	Debug      bool   `json:"debug"`
+
+	AuthHeaderName  string `json:"authHeaderName"`
+	AuthHeaderValue string `json:"authHeaderValue"`
+	HistoryMode     string `json:"historyMode"` // "ram" | "disk"
+}
+
+func defaultConfig() *Config {
+	return &Config{
+		ASRURL:      "http://localhost:9000",
+		Language:    "auto",
+		ASREngine:   "faster_whisper",
+		ASRTimeout:  60,
+		ASRRetries:  3,
+		HotkeyStr:   "ctrl+shift+r",
+		HotkeyMode:  "toggle",
+		DeviceID:    -1,
+		HistoryMode: HistoryRAM,
+	}
+}
+
+// configDir returns the XDG config directory for the app, creating it if needed.
+func configDir() (string, error) {
+	base := os.Getenv("XDG_CONFIG_HOME")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve home dir: %w", err)
+		}
+		base = filepath.Join(home, ".config")
+	}
+	dir := filepath.Join(base, "whisper-go-ui")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("create config dir %s: %w", dir, err)
+	}
+	return dir, nil
+}
+
+// dataDir returns the XDG data directory for the app, creating it if needed.
+func dataDir() (string, error) {
+	base := os.Getenv("XDG_DATA_HOME")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve home dir: %w", err)
+		}
+		base = filepath.Join(home, ".local", "share")
+	}
+	dir := filepath.Join(base, "whisper-go-ui")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("create data dir %s: %w", dir, err)
+	}
+	return dir, nil
+}
+
+func configPath() (string, error) {
+	dir, err := configDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "config.json"), nil
+}
+
+// loadConfig reads config.json over a fully-defaulted struct, so missing or
+// unknown fields degrade gracefully. A missing file is not an error.
+func loadConfig() (*Config, error) {
+	c := defaultConfig()
+	path, err := configPath()
+	if err != nil {
+		return c, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			dbg("[CFG] No config at %s — using defaults", path)
+			return c, nil
+		}
+		return c, fmt.Errorf("read config %s: %w", path, err)
+	}
+	if err := json.Unmarshal(data, c); err != nil {
+		return defaultConfig(), fmt.Errorf("parse config %s: %w", path, err)
+	}
+	c.normalize()
+	dbg("[CFG] Loaded config from %s", path)
+	return c, nil
+}
+
+// saveConfig atomically writes config.json with 0600 perms (the auth header
+// value is a secret).
+func saveConfig(c *Config) error {
+	path, err := configPath()
+	if err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, append(data, '\n'), 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", tmp, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("rename %s: %w", tmp, err)
+	}
+	dbg("[CFG] Saved config to %s", path)
+	return nil
+}
+
+// normalize clamps out-of-range values back to defaults.
+func (c *Config) normalize() {
+	d := defaultConfig()
+	if strings.TrimSpace(c.ASRURL) == "" {
+		c.ASRURL = d.ASRURL
+	}
+	if c.Language == "" {
+		c.Language = d.Language
+	}
+	if c.ASREngine == "" {
+		c.ASREngine = d.ASREngine
+	}
+	if c.ASRTimeout <= 0 {
+		c.ASRTimeout = d.ASRTimeout
+	}
+	if c.ASRRetries <= 0 {
+		c.ASRRetries = d.ASRRetries
+	}
+	if strings.TrimSpace(c.HotkeyStr) == "" {
+		c.HotkeyStr = d.HotkeyStr
+	}
+	if c.HistoryMode != HistoryDisk {
+		c.HistoryMode = HistoryRAM
+	}
+	if c.DeviceID < -1 {
+		c.DeviceID = -1
+	}
+}
+
+// validate rejects configs that must not be persisted.
+func (c *Config) validate() error {
+	if strings.TrimSpace(c.ASRURL) == "" {
+		return fmt.Errorf("API URL must not be empty")
+	}
+	if !strings.HasPrefix(c.ASRURL, "http://") && !strings.HasPrefix(c.ASRURL, "https://") {
+		return fmt.Errorf("API URL must start with http:// or https://")
+	}
+	hk, err := parseHotkey(c.HotkeyStr)
+	if err != nil {
+		return fmt.Errorf("invalid hotkey %q: %w", c.HotkeyStr, err)
+	}
+	// The paste step sends a synthetic Ctrl+V; using it as the hotkey would
+	// re-trigger the pipeline from its own paste.
+	if hk.String() == "ctrl+v" {
+		return fmt.Errorf("ctrl+v cannot be used as the hotkey (it is the paste keystroke)")
+	}
+	if c.AuthHeaderName == "" && c.AuthHeaderValue != "" {
+		return fmt.Errorf("auth header value set but header name is empty")
+	}
+	if c.ASRTimeout <= 0 || c.ASRTimeout > 600 {
+		return fmt.Errorf("timeout must be between 1 and 600 seconds")
+	}
+	if c.ASRRetries <= 0 || c.ASRRetries > 10 {
+		return fmt.Errorf("retries must be between 1 and 10")
+	}
+	if c.HistoryMode != HistoryRAM && c.HistoryMode != HistoryDisk {
+		return fmt.Errorf("history mode must be %q or %q", HistoryRAM, HistoryDisk)
+	}
+	return nil
+}
+
+// configStore guards concurrent access to the live config (hotkey goroutine,
+// pipeline goroutine and bound UI methods all read it).
+type configStore struct {
+	mu sync.RWMutex
+	c  *Config
+}
+
+func (s *configStore) Get() Config {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return *s.c
+}
+
+func (s *configStore) Set(c *Config) {
+	s.mu.Lock()
+	s.c = c
+	s.mu.Unlock()
+}

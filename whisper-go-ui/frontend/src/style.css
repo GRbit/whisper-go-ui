@@ -1,0 +1,67 @@
+@font-face {
+  font-family: "Nunito";
+  font-style: normal;
+  font-weight: 400;
+  src: local(""),
+    url("assets/fonts/nunito-v16-latin-regular.woff2") format("woff2");
+}
+
+:root {
+  --bg: #181a20;
+  --bg-panel: #21242c;
+  --bg-input: #2a2e38;
+  --border: #363b47;
+  --text: #e6e8ee;
+  --text-dim: #9aa0ad;
+  --accent: #4f8cff;
+  --red: #e0342c;
+  --amber: #f0a030;
+  --green: #2ea043;
+  --gray: #8a8a8a;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  color: var(--text);
+  background-color: var(--bg);
+  font-family: "Nunito", -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+}
+
+#app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input,
+select {
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  outline: none;
+}
+
+input:focus,
+select:focus {
+  border-color: var(--accent);
+}
