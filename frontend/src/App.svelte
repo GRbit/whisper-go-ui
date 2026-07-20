@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import Settings from './Settings.svelte'
   import History from './History.svelte'
   import { GetConfig, GetState, ToggleRecording } from '../wailsjs/go/main/App.js'
@@ -8,6 +8,21 @@
   let tab: 'settings' | 'history' = $state('settings')
   let appState: string = $state('waiting')
   let lastError: string = $state('')
+
+  // Both tabs render inside the same scrollable <main>, so its scrollTop
+  // survives tab switches: a scrolled-down Settings leaves History's short
+  // content stranded above the viewport with no scrollbar to recover.
+  // Remember the position per tab and restore it after the switch renders.
+  let mainEl: HTMLElement | undefined = $state()
+  const scrollPos: Record<string, number> = { settings: 0, history: 0 }
+
+  async function switchTab(t: 'settings' | 'history') {
+    if (t === tab) return
+    if (mainEl) scrollPos[tab] = mainEl.scrollTop
+    tab = t
+    await tick()
+    if (mainEl) mainEl.scrollTop = scrollPos[t]
+  }
 
   const stateColors: Record<string, string> = {
     waiting: 'var(--gray)',
@@ -43,8 +58,8 @@
 
 <header>
   <nav>
-    <button class:active={tab === 'settings'} onclick={() => (tab = 'settings')}>Settings</button>
-    <button class:active={tab === 'history'} onclick={() => (tab = 'history')}>History</button>
+    <button class:active={tab === 'settings'} onclick={() => switchTab('settings')}>Settings</button>
+    <button class:active={tab === 'history'} onclick={() => switchTab('history')}>History</button>
   </nav>
   <div class="status">
     <span class="dot" style="background: {stateColors[appState] ?? 'var(--gray)'}"></span>
@@ -62,7 +77,7 @@
   </div>
 {/if}
 
-<main>
+<main bind:this={mainEl}>
   {#if tab === 'settings'}
     <Settings />
   {:else}
