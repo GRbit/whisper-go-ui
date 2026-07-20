@@ -227,8 +227,12 @@ func (p *Pipeline) processRecording(rec *Recorder) {
 
 	info("[PROC] ASR completed in %.2fs — %d chars", asrElapsed.Seconds(), len(transcript))
 
-	pasted := deliverText(transcript, &cfg)
+	pasted, pasteErr := deliverText(transcript, &cfg)
 	switch {
+	case pasteErr != nil:
+		// Surface it, but keep going: the transcript still goes to history.
+		info("[ERROR] Delivery failed: %v", pasteErr)
+		p.emitError(fmt.Errorf("delivery failed: %w", pasteErr))
 	case pasted:
 		info("[PROC] Pasted %d chars", len(transcript))
 	case cfg.CopyToClipboard:
@@ -247,8 +251,8 @@ func (p *Pipeline) processRecording(rec *Recorder) {
 		runtime.EventsEmit(ctx2, "history:added", entry)
 	}
 
-	// With delivery fully disabled there is no paste to announce.
-	if !pasted && !cfg.CopyToClipboard {
+	// No "pasted" state to announce when delivery failed or is disabled.
+	if pasteErr != nil || (!pasted && !cfg.CopyToClipboard) {
 		p.setState(StateIdle)
 		return
 	}
