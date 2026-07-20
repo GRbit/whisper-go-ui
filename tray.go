@@ -4,6 +4,7 @@ import (
 	"sync/atomic"
 
 	"fyne.io/systray"
+	"log/slog"
 
 	"whisper-go-ui/icons"
 )
@@ -54,7 +55,7 @@ func (t *Tray) Start(onToggle, onShow, onQuit func()) {
 		if p := t.pending.Swap(-1); p >= 0 {
 			t.SetState(State(p))
 		}
-		info("[TRAY] System tray ready")
+		slog.Info("[TRAY] System tray ready")
 	}, nil)
 }
 

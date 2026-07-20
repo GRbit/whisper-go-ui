@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
 	"github.com/gordonklaus/portaudio"
+	"log/slog"
 )
 
 // Audio constants shared with the rest of the package.
@@ -43,10 +43,10 @@ func NewRecorder(device *portaudio.DeviceInfo) *Recorder {
 // Start launches the capture goroutine.
 // Call Stop() to signal it to finish, then Wait() to get the WAV path.
 func (r *Recorder) Start() {
-	dbg("[REC] Start() — launching capture goroutine")
+	slog.Debug("[REC] Start() — launching capture goroutine")
 	go func() {
 		path, dur, err := r.capture()
-		dbg("[REC] Capture goroutine finished: path=%q dur=%.3fs err=%v", path, dur.Seconds(), err)
+		slog.Debug("[REC] Capture goroutine finished", "path", path, "duration", dur, "error", err)
 		r.resCh <- recResult{path, dur, err}
 	}()
 }
@@ -55,9 +55,9 @@ func (r *Recorder) Start() {
 func (r *Recorder) Stop() {
 	select {
 	case <-r.stopCh:
-		dbg("[REC] Stop() called but stopCh already closed (idempotent)")
+		slog.Debug("[REC] Stop() called but stopCh already closed (idempotent)")
 	default:
-		dbg("[REC] Stop() closing stopCh — capture loop will exit after current Read()")
+		slog.Debug("[REC] Stop() closing stopCh — capture loop will exit after current Read()")
 		close(r.stopCh)
 	}
 }
@@ -65,9 +65,9 @@ func (r *Recorder) Stop() {
 // Wait blocks until the capture goroutine has finished writing the WAV file,
 // then returns the WAV path and audio duration.
 func (r *Recorder) Wait() (string, time.Duration, error) {
-	dbg("[REC] Wait() blocking on resCh...")
+	slog.Debug("[REC] Wait() blocking on resCh...")
 	res := <-r.resCh
-	dbg("[REC] Wait() unblocked: path=%q dur=%.3fs err=%v", res.wavPath, res.duration.Seconds(), res.err)
+	slog.Debug("[REC] Wait() unblocked", "path", res.wavPath, "duration", res.duration, "error", res.err)
 	return res.wavPath, res.duration, res.err
 }
 
@@ -78,8 +78,8 @@ func (r *Recorder) capture() (string, time.Duration, error) {
 	actualSR := dev.DefaultSampleRate
 	ratio := actualSR / float64(whisperSampleRate)
 
-	dbg("[REC] capture(): device=%q  nativeSR=%.0fHz  targetSR=%dHz  ratio=%.4f",
-		dev.Name, actualSR, whisperSampleRate, ratio)
+	slog.Debug("[REC] capture() starting", "device", dev.Name,
+		"nativeSR", actualSR, "targetSR", whisperSampleRate, "ratio", ratio)
 
 	// Allocate raw input buffer (native sample rate)
 	inputBuf := make([]int16, framesPerBuffer)
@@ -94,22 +94,22 @@ func (r *Recorder) capture() (string, time.Duration, error) {
 		FramesPerBuffer: framesPerBuffer,
 	}
 
-	dbg("[REC] Opening PortAudio stream...")
+	slog.Debug("[REC] Opening PortAudio stream...")
 	stream, err := portaudio.OpenStream(params, inputBuf)
 	if err != nil {
 		return "", 0, fmt.Errorf("portaudio.OpenStream: %w", err)
 	}
 	defer func() {
-		dbg("[REC] Stopping + closing PortAudio stream")
+		slog.Debug("[REC] Stopping + closing PortAudio stream")
 		if sErr := stream.Stop(); sErr != nil {
-			dbg("[REC] stream.Stop() warning: %v", sErr)
+			slog.Debug("[REC] stream.Stop() warning", "error", sErr)
 		}
 		if cErr := stream.Close(); cErr != nil {
-			dbg("[REC] stream.Close() warning: %v", cErr)
+			slog.Debug("[REC] stream.Close() warning", "error", cErr)
 		}
 	}()
 
-	dbg("[REC] stream.Start()")
+	slog.Debug("[REC] stream.Start()")
 	if err := stream.Start(); err != nil {
 		return "", 0, fmt.Errorf("portaudio stream.Start: %w", err)
 	}
@@ -126,7 +126,7 @@ func (r *Recorder) capture() (string, time.Duration, error) {
 	progressTicker := time.NewTicker(2 * time.Second)
 	defer progressTicker.Stop()
 
-	dbg("[REC] Entering capture loop (stop signal on stopCh)...")
+	slog.Debug("[REC] Entering capture loop (stop signal on stopCh)...")
 
 captureLoop:
 	for {
@@ -134,8 +134,8 @@ captureLoop:
 		select {
 		case <-r.stopCh:
 			elapsed := time.Since(startWall)
-			dbg("[REC] Stop signal received at frame %d  elapsed=%.3fs  samples=%d",
-				frameCount, elapsed.Seconds(), len(samples))
+			slog.Debug("[REC] Stop signal received",
+				"frame", frameCount, "elapsed", elapsed, "samples", len(samples))
 			break captureLoop
 		default:
 		}
@@ -143,18 +143,17 @@ captureLoop:
 		// ── Periodic progress log ──────────────────────────────────
 		select {
 		case <-progressTicker.C:
-			info("[REC] ... %.1fs recorded  (%d frames, %d samples, %.1f KiB)",
-				time.Since(startWall).Seconds(),
-				frameCount,
-				len(samples),
-				float64(len(samples)*2)/1024,
+			slog.Info("[REC] Recording in progress",
+				"elapsed", time.Since(startWall),
+				"frames", frameCount,
+				"samples", len(samples),
 			)
 		default:
 		}
 
 		// ── Blocking read — returns after framesPerBuffer frames ───
 		if err := stream.Read(); err != nil {
-			log.Printf("[REC] stream.Read() error: %v — stopping capture", err)
+			slog.Error("[REC] stream.Read() failed — stopping capture", "error", err)
 			break captureLoop
 		}
 		frameCount++
@@ -172,8 +171,8 @@ captureLoop:
 	wallDur := time.Since(startWall)
 	audioDur := time.Duration(float64(len(samples)) / float64(whisperSampleRate) * float64(time.Second))
 
-	dbg("[REC] Capture done: %d frames  %d samples  wall=%.3fs  audio=%.3fs",
-		frameCount, len(samples), wallDur.Seconds(), audioDur.Seconds())
+	slog.Debug("[REC] Capture done", "frames", frameCount,
+		"samples", len(samples), "wall", wallDur, "audio", audioDur)
 
 	// Reject recordings that are too short to produce a meaningful transcript.
 	const minSamples = whisperSampleRate / 10 // 100 ms
@@ -185,7 +184,7 @@ captureLoop:
 	}
 
 	// ── Build WAV and write to temp file ──────────────────────────────
-	dbg("[REC] Building WAV (PCM-16 mono %dHz, %d samples)...", whisperSampleRate, len(samples))
+	slog.Debug("[REC] Building WAV (PCM-16 mono)", "sampleRate", whisperSampleRate, "samples", len(samples))
 	wavData := buildWAV(samples, whisperSampleRate)
 
 	f, err := os.CreateTemp("", "wpaste-*.wav")
@@ -193,7 +192,7 @@ captureLoop:
 		return "", 0, fmt.Errorf("os.CreateTemp: %w", err)
 	}
 	wavPath := f.Name()
-	dbg("[REC] Writing WAV to temp file: %s", wavPath)
+	slog.Debug("[REC] Writing WAV to temp file", "path", wavPath)
 
 	if _, werr := f.Write(wavData); werr != nil {
 		f.Close()
@@ -205,8 +204,8 @@ captureLoop:
 		return "", 0, fmt.Errorf("close WAV temp file: %w", cerr)
 	}
 
-	dbg("[REC] WAV successfully written: %s  (%.1f KiB, %.3fs audio)",
-		wavPath, float64(len(wavData))/1024, audioDur.Seconds())
+	slog.Debug("[REC] WAV written", "path", wavPath,
+		"bytes", len(wavData), "audio", audioDur)
 
 	return wavPath, audioDur, nil
 }

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"log/slog"
 )
 
 // History storage modes.
@@ -127,7 +129,7 @@ func loadConfig() (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			dbg("[CFG] No config at %s — using defaults", path)
+			slog.Debug("[CFG] No config file — using defaults", "path", path)
 			return c, nil
 		}
 		return c, fmt.Errorf("read config %s: %w", path, err)
@@ -136,7 +138,7 @@ func loadConfig() (*Config, error) {
 		return defaultConfig(), fmt.Errorf("parse config %s: %w", path, err)
 	}
 	c.normalize()
-	dbg("[CFG] Loaded config from %s", path)
+	slog.Debug("[CFG] Loaded config", "path", path)
 	return c, nil
 }
 
@@ -159,7 +161,7 @@ func saveConfig(c *Config) error {
 		os.Remove(tmp)
 		return fmt.Errorf("rename %s: %w", tmp, err)
 	}
-	dbg("[CFG] Saved config to %s", path)
+	slog.Debug("[CFG] Saved config", "path", path)
 	return nil
 }
 

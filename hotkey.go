@@ -8,6 +8,7 @@ import (
 	"time"
 
 	hook "github.com/robotn/gohook"
+	"log/slog"
 )
 
 // ── hotkey parsing (tables reused from the CLI implementation) ────────────────
@@ -239,7 +240,7 @@ func (h *HotkeyListener) SetCombo(c *ParsedHotkey) {
 	h.mu.Lock()
 	h.combo = c
 	h.mu.Unlock()
-	info("[HOTKEY] Active combo changed to %s", c)
+	slog.Info("[HOTKEY] Active combo changed", "combo", c.String())
 }
 
 func (h *HotkeyListener) getCombo() *ParsedHotkey {
@@ -261,7 +262,7 @@ func (h *HotkeyListener) Capture(timeout time.Duration) string {
 	}
 	h.capture = ch
 	h.mu.Unlock()
-	info("[HOTKEY] Combo capture started (Escape cancels, %.0fs timeout)", timeout.Seconds())
+	slog.Info("[HOTKEY] Combo capture started (Escape cancels)", "timeout", timeout)
 
 	select {
 	case combo := <-ch:
@@ -278,7 +279,7 @@ func (h *HotkeyListener) Capture(timeout time.Duration) string {
 			return combo
 		default:
 		}
-		info("[HOTKEY] Combo capture timed out")
+		slog.Info("[HOTKEY] Combo capture timed out")
 		return ""
 	}
 }
@@ -309,7 +310,7 @@ func (h *HotkeyListener) Run() {
 	// comboFired prevents retriggering while keys are still held.
 	comboFired := false
 
-	info("[HOTKEY] Listening for %s (toggle mode)", h.getCombo())
+	slog.Info("[HOTKEY] Listening (toggle mode)", "combo", h.getCombo().String())
 
 	for ev := range evChan {
 		rc := ev.Rawcode
@@ -328,10 +329,10 @@ func (h *HotkeyListener) Run() {
 					continue
 				}
 				if rc == escapeRawcode {
-					info("[HOTKEY] Combo capture cancelled with Escape")
+					slog.Info("[HOTKEY] Combo capture cancelled with Escape")
 					h.finishCapture(ch, "")
 				} else if combo, ok := captureCombo(pressed, rc); ok {
-					info("[HOTKEY] Captured combo: %s", combo)
+					slog.Info("[HOTKEY] Captured combo", "combo", combo)
 					h.finishCapture(ch, combo)
 				}
 				continue
@@ -339,7 +340,7 @@ func (h *HotkeyListener) Run() {
 
 			if !isRepeat && hk.isTriggered(pressed) && !comboFired {
 				comboFired = true
-				info("[HOTKEY] Combo activated: %s", hk)
+				slog.Info("[HOTKEY] Combo activated", "combo", hk.String())
 				h.fire()
 			}
 
@@ -351,7 +352,7 @@ func (h *HotkeyListener) Run() {
 			}
 		}
 	}
-	info("[HOTKEY] Event loop terminated")
+	slog.Info("[HOTKEY] Event loop terminated")
 }
 
 // Stop terminates the gohook event loop (unblocks Run).

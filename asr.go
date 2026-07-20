@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"log/slog"
 )
 
 // transcribeFile sends the WAV file at wavPath to the remote ASR /asr endpoint
@@ -29,26 +31,26 @@ func transcribeFile(ctx context.Context, c *Config, wavPath string) (string, err
 
 	if c.Language != "" && c.Language != "auto" {
 		q.Set("language", c.Language)
-		dbg("[ASR] Language set to: %q", c.Language)
+		slog.Debug("[ASR] Language set", "language", c.Language)
 	} else {
-		dbg("[ASR] Language: server-side auto-detect")
+		slog.Debug("[ASR] Language: server-side auto-detect")
 	}
 
 	if strings.EqualFold(c.ASREngine, "faster_whisper") {
 		q.Set("vad_filter", "true")
-		dbg("[ASR] VAD filter: enabled (faster_whisper engine)")
+		slog.Debug("[ASR] VAD filter: enabled (faster_whisper engine)")
 	}
 
 	fullURL := endpoint + "?" + q.Encode()
-	dbg("[ASR] Full endpoint URL: %s", fullURL)
+	slog.Debug("[ASR] Endpoint ready", "url", fullURL)
 
 	// ── Read audio file ────────────────────────────────────────────────
-	dbg("[ASR] Reading WAV file: %s", wavPath)
+	slog.Debug("[ASR] Reading WAV file", "path", wavPath)
 	fileBytes, err := os.ReadFile(wavPath)
 	if err != nil {
 		return "", fmt.Errorf("read WAV %s: %w", wavPath, err)
 	}
-	dbg("[ASR] WAV size: %d bytes (%.1f KiB)", len(fileBytes), float64(len(fileBytes))/1024)
+	slog.Debug("[ASR] WAV file read", "bytes", len(fileBytes))
 
 	filename := filepath.Base(wavPath)
 	client := &http.Client{
@@ -60,7 +62,7 @@ func transcribeFile(ctx context.Context, c *Config, wavPath string) (string, err
 		if attempt > 1 {
 			// Exponential back-off: 2s, 4s, 8s, …
 			wait := time.Duration(1<<uint(attempt-1)) * time.Second
-			info("[ASR] Retry %d/%d in %s...", attempt, c.ASRRetries, wait)
+			slog.Info("[ASR] Retrying", "attempt", attempt, "retries", c.ASRRetries, "wait", wait)
 			select {
 			case <-ctx.Done():
 				return "", fmt.Errorf("context cancelled while waiting for retry: %w", ctx.Err())
@@ -68,7 +70,7 @@ func transcribeFile(ctx context.Context, c *Config, wavPath string) (string, err
 			}
 		}
 
-		dbg("[ASR] Attempt %d/%d — building multipart body for %q", attempt, c.ASRRetries, filename)
+		slog.Debug("[ASR] Building multipart body", "attempt", attempt, "retries", c.ASRRetries, "filename", filename)
 		body, contentType, err := buildMultipartBody(fileBytes, filename)
 		if err != nil {
 			return "", fmt.Errorf("build multipart body: %w", err)
@@ -82,10 +84,10 @@ func transcribeFile(ctx context.Context, c *Config, wavPath string) (string, err
 		req.Header.Set("Accept", "text/plain")
 		if c.AuthHeaderName != "" {
 			req.Header.Set(c.AuthHeaderName, c.AuthHeaderValue)
-			dbg("[ASR] Auth header %q attached", c.AuthHeaderName)
+			slog.Debug("[ASR] Auth header attached", "header", c.AuthHeaderName)
 		}
 
-		dbg("[ASR] Sending POST to %s (attempt %d)...", endpoint, attempt)
+		slog.Debug("[ASR] Sending POST", "endpoint", endpoint, "attempt", attempt)
 		tStart := time.Now()
 
 		resp, err := client.Do(req)
@@ -93,32 +95,32 @@ func transcribeFile(ctx context.Context, c *Config, wavPath string) (string, err
 
 		if err != nil {
 			lastErr = fmt.Errorf("HTTP POST: %w", err)
-			info("[ASR] Attempt %d failed (%.2fs): %v", attempt, roundTrip.Seconds(), lastErr)
+			slog.Warn("[ASR] Attempt failed", "attempt", attempt, "elapsed", roundTrip, "error", lastErr)
 			continue
 		}
 
-		dbg("[ASR] Response received in %.3fs: HTTP %d  Content-Type: %s",
-			roundTrip.Seconds(), resp.StatusCode, resp.Header.Get("Content-Type"))
+		slog.Debug("[ASR] Response received", "elapsed", roundTrip,
+			"status", resp.StatusCode, "contentType", resp.Header.Get("Content-Type"))
 
 		body2, readErr := io.ReadAll(resp.Body)
 		resp.Body.Close()
 
 		if readErr != nil {
 			lastErr = fmt.Errorf("read response body: %w", readErr)
-			info("[ASR] Attempt %d: failed to read response body: %v", attempt, readErr)
+			slog.Warn("[ASR] Reading response body failed", "attempt", attempt, "error", readErr)
 			continue
 		}
 
-		dbg("[ASR] Response body (%d bytes): %q", len(body2), clip(string(body2), 500))
+		slog.Debug("[ASR] Response body", "bytes", len(body2), "body", clip(string(body2), 500))
 
 		if resp.StatusCode != http.StatusOK {
 			lastErr = fmt.Errorf("HTTP %d: %s", resp.StatusCode, clip(string(body2), 200))
-			info("[ASR] Attempt %d: server error: %v", attempt, lastErr)
+			slog.Warn("[ASR] Server error", "attempt", attempt, "error", lastErr)
 			continue
 		}
 
 		transcript := strings.TrimSpace(string(body2))
-		info("[ASR] Transcription received in %.2fs  (%d chars)", roundTrip.Seconds(), len(transcript))
+		slog.Info("[ASR] Transcription received", "elapsed", roundTrip, "chars", len(transcript))
 		return transcript, nil
 	}
 

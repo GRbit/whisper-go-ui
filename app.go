@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync/atomic"
 	"time"
 
 	"github.com/gordonklaus/portaudio"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"log/slog"
 )
 
 // App is the Wails-bound application backend.
@@ -42,22 +42,21 @@ func (a *App) startup(ctx context.Context) {
 
 	cfg, err := loadConfig()
 	if err != nil {
-		info("[INIT] Config problem (using defaults where needed): %v", err)
+		slog.Warn("[INIT] Config problem (using defaults where needed)", "error", err)
 	}
 	a.cfg.Set(cfg)
-	debugMode.Store(cfg.Debug)
 	if cfg.Debug {
-		log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+		logLevel.Set(slog.LevelDebug)
 	}
 
 	if err := portaudio.Initialize(); err != nil {
-		log.Printf("[FATAL] PortAudio init: %v", err)
+		slog.Error("[INIT] PortAudio init failed", "error", err)
 	}
 	a.devices, err = portaudio.Devices()
 	if err != nil {
-		log.Printf("[ERROR] portaudio.Devices(): %v", err)
+		slog.Error("[INIT] Listing PortAudio devices failed", "error", err)
 	}
-	info("[INIT] Found %d PortAudio device(s)", len(a.devices))
+	slog.Info("[INIT] PortAudio devices found", "count", len(a.devices))
 
 	a.history = NewHistoryStore(cfg.HistoryMode)
 	a.tray = NewTray()
@@ -67,7 +66,7 @@ func (a *App) startup(ctx context.Context) {
 	combo, err := parseHotkey(cfg.HotkeyStr)
 	if err != nil {
 		// Config was validated on save, but guard against a hand-edited file.
-		info("[INIT] Invalid hotkey %q (%v) — falling back to ctrl+shift+r", cfg.HotkeyStr, err)
+		slog.Warn("[INIT] Invalid hotkey — falling back to ctrl+shift+r", "hotkey", cfg.HotkeyStr, "error", err)
 		combo, _ = parseHotkey("ctrl+shift+r")
 	}
 	a.hotkey = NewHotkeyListener(combo, a.pipeline.Toggle)
@@ -131,7 +130,11 @@ func (a *App) SaveConfig(c Config) error {
 
 	old := a.cfg.Get()
 	a.cfg.Set(&c)
-	debugMode.Store(c.Debug)
+	if c.Debug {
+		logLevel.Set(slog.LevelDebug)
+	} else {
+		logLevel.Set(slog.LevelInfo)
+	}
 
 	if c.HotkeyStr != old.HotkeyStr {
 		combo, err := parseHotkey(c.HotkeyStr)

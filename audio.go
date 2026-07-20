@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/gordonklaus/portaudio"
+	"log/slog"
 )
 
 // AudioDevice is the JSON-friendly device description sent to the frontend.
@@ -69,17 +70,17 @@ func findPulseDevice(devices []*portaudio.DeviceInfo) int {
 func pickDevice(devices []*portaudio.DeviceInfo, deviceID int) int {
 	if deviceID >= 0 {
 		if deviceID < len(devices) && devices[deviceID].MaxInputChannels > 0 {
-			info("[DEV] Using configured device [%d] %s", deviceID, devices[deviceID].Name)
+			slog.Info("[DEV] Using configured device", "id", deviceID, "name", devices[deviceID].Name)
 			return deviceID
 		}
-		info("[WARN] Configured device %d invalid (out of range or no input) — falling back", deviceID)
+		slog.Warn("[DEV] Configured device invalid (out of range or no input) — falling back", "id", deviceID)
 	}
 
 	if pulse := findPulseDevice(devices); pulse >= 0 {
-		info("[DEV] Auto-selected audio device [%d] %s", pulse, devices[pulse].Name)
+		slog.Info("[DEV] Auto-selected audio device", "id", pulse, "name", devices[pulse].Name)
 		return pulse
 	}
 
-	info("[DEV] No preferred device found — will use PortAudio default")
+	slog.Info("[DEV] No preferred device found — will use PortAudio default")
 	return -1
 }

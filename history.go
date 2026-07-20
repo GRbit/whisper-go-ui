@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"log/slog"
 )
 
 // maxHistoryEntries caps the in-memory history (and how much of the JSONL
@@ -34,7 +36,7 @@ func NewHistoryStore(mode string) *HistoryStore {
 	s := &HistoryStore{}
 	dir, err := dataDir()
 	if err != nil {
-		info("[HIST] Data dir unavailable, disk mode disabled: %v", err)
+		slog.Warn("[HIST] Data dir unavailable, disk mode disabled", "error", err)
 	} else {
 		s.path = filepath.Join(dir, "history.jsonl")
 	}
@@ -70,9 +72,9 @@ func (s *HistoryStore) SetMode(mode string) {
 			merged = merged[len(merged)-maxHistoryEntries:]
 		}
 		s.entries = merged
-		info("[HIST] Disk mode on — %d entries shown, new ones append to %s", len(s.entries), s.path)
+		slog.Info("[HIST] Disk mode on — new entries append to the file", "shown", len(s.entries), "path", s.path)
 	} else {
-		info("[HIST] RAM mode on — file kept as-is, no further appends")
+		slog.Info("[HIST] RAM mode on — file kept as-is, no further appends")
 	}
 }
 
@@ -98,7 +100,7 @@ func (s *HistoryStore) Add(e HistoryEntry) {
 
 	if s.disk {
 		if err := s.appendFileLocked(e); err != nil {
-			info("[HIST] Append to %s failed: %v", s.path, err)
+			slog.Error("[HIST] Append failed", "path", s.path, "error", err)
 		}
 	}
 }
@@ -133,7 +135,7 @@ func (s *HistoryStore) loadFileLocked() []HistoryEntry {
 	f, err := os.Open(s.path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			info("[HIST] Open %s: %v", s.path, err)
+			slog.Warn("[HIST] Open failed", "path", s.path, "error", err)
 		}
 		return nil
 	}
@@ -145,13 +147,13 @@ func (s *HistoryStore) loadFileLocked() []HistoryEntry {
 	for sc.Scan() {
 		var e HistoryEntry
 		if err := json.Unmarshal(sc.Bytes(), &e); err != nil {
-			dbg("[HIST] Skipping malformed line: %v", err)
+			slog.Debug("[HIST] Skipping malformed line", "error", err)
 			continue
 		}
 		entries = append(entries, e)
 	}
 	if err := sc.Err(); err != nil {
-		info("[HIST] Scan %s: %v", s.path, err)
+		slog.Warn("[HIST] Scan failed", "path", s.path, "error", err)
 	}
 	if len(entries) > maxHistoryEntries {
 		entries = entries[len(entries)-maxHistoryEntries:]

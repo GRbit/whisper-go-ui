@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-vgo/robotgo"
+	"log/slog"
 )
 
 // Indirection over robotgo so tests can stub these: the real calls need an
@@ -29,16 +30,16 @@ var (
 func deliverText(text string, c *Config) (bool, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		dbg("[PASTE] Nothing to deliver — text is empty after TrimSpace")
+		slog.Debug("[PASTE] Nothing to deliver — text is empty after TrimSpace")
 		return false, nil
 	}
 	if !c.CopyToClipboard && !c.AutoPaste {
-		dbg("[PASTE] Clipboard and auto-paste both disabled — text goes to history only")
+		slog.Debug("[PASTE] Clipboard and auto-paste both disabled — text goes to history only")
 		return false, nil
 	}
 
-	dbg("[PASTE] Text to deliver (%d chars): %q  copy=%v paste=%v combo=%s",
-		len(text), clip(text, 120), c.CopyToClipboard, c.AutoPaste, c.PasteCombo)
+	slog.Debug("[PASTE] Text to deliver", "chars", len(text), "text", clip(text, 120),
+		"copy", c.CopyToClipboard, "paste", c.AutoPaste, "combo", c.PasteCombo)
 
 	// Save the old clipboard text when we will need to put it back.
 	var prev string
@@ -47,7 +48,7 @@ func deliverText(text string, c *Config) (bool, error) {
 		if p, err := clipboardRead(); err == nil {
 			prev, prevOK = p, true
 		} else {
-			dbg("[PASTE] Could not read clipboard for restore: %v", err)
+			slog.Debug("[PASTE] Could not read clipboard for restore", "error", err)
 		}
 	}
 
@@ -60,7 +61,7 @@ func deliverText(text string, c *Config) (bool, error) {
 	}
 
 	if !c.AutoPaste {
-		dbg("[PASTE] Copied to clipboard, auto-paste disabled")
+		slog.Debug("[PASTE] Copied to clipboard, auto-paste disabled")
 		return false, nil
 	}
 
@@ -85,7 +86,7 @@ func deliverText(text string, c *Config) (bool, error) {
 	// Small post-paste delay — lets the receiving app process the event
 	// before we potentially do anything else.
 	time.Sleep(50 * time.Millisecond)
-	dbg("[PASTE] %s sent — paste complete", c.PasteCombo)
+	slog.Debug("[PASTE] Paste keystroke sent", "combo", c.PasteCombo)
 
 	// ── 3. Optionally restore the previous clipboard text ─────────────
 	if !c.CopyToClipboard && prevOK {
@@ -94,9 +95,9 @@ func deliverText(text string, c *Config) (bool, error) {
 		// Only text is restored — non-text clipboard content is lost.
 		time.Sleep(300 * time.Millisecond)
 		if err := clipboardWrite(prev); err != nil {
-			info("[PASTE] Restoring previous clipboard text failed: %v", err)
+			slog.Warn("[PASTE] Restoring previous clipboard text failed", "error", err)
 		} else {
-			dbg("[PASTE] Previous clipboard text restored (%d chars)", len(prev))
+			slog.Debug("[PASTE] Previous clipboard text restored", "chars", len(prev))
 		}
 	}
 	return true, nil

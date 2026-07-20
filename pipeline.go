@@ -11,6 +11,7 @@ import (
 
 	"github.com/gordonklaus/portaudio"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"log/slog"
 )
 
 // State is the app-wide pipeline state, mirrored to the tray icon and the UI.
@@ -85,7 +86,7 @@ func (p *Pipeline) setState(s State) {
 	p.mu.Unlock()
 
 	if old != s {
-		info("[STATE] %s → %s", old, s)
+		slog.Info("[STATE] Transition", "from", old.String(), "to", s.String())
 	}
 	p.tray.SetState(s)
 	if ctx != nil {
@@ -116,7 +117,7 @@ func (p *Pipeline) Toggle() {
 	case StateRecording:
 		p.stopRecording()
 	case StateProcessing:
-		info("[ACTION] Hotkey ignored — ASR processing in progress")
+		slog.Info("[ACTION] Hotkey ignored — ASR processing in progress")
 	}
 }
 
@@ -137,7 +138,7 @@ func (p *Pipeline) startRecording() {
 		host, err := portaudio.DefaultHostApi()
 		if err != nil || host == nil || host.DefaultInputDevice == nil {
 			p.mu.Unlock()
-			info("[ERROR] No usable audio input device — cannot record")
+			slog.Error("[REC] No usable audio input device — cannot record")
 			p.emitError(fmt.Errorf("no usable audio input device"))
 			return
 		}
@@ -152,7 +153,7 @@ func (p *Pipeline) startRecording() {
 	p.state = StateRecording
 	p.mu.Unlock()
 
-	info("[REC] Recording started on: %s", device.Name)
+	slog.Info("[REC] Recording started", "device", device.Name)
 	p.setState(StateRecording) // re-emit for tray/UI (state already set under lock)
 	rec.Start()
 }
@@ -167,7 +168,7 @@ func (p *Pipeline) stopRecording() {
 	p.mu.Unlock()
 
 	if rec == nil {
-		info("[WARN] stopRecording called with no active recorder")
+		slog.Warn("[REC] stopRecording called with no active recorder")
 		p.setState(StateIdle)
 		return
 	}
@@ -182,7 +183,7 @@ func (p *Pipeline) processRecording(rec *Recorder) {
 
 	finish := func(err error) {
 		if err != nil {
-			info("[ERROR] %v", err)
+			slog.Error("[PROC] Pipeline error", "error", err)
 			p.emitError(err)
 		}
 		p.setState(StateIdle)
@@ -194,16 +195,16 @@ func (p *Pipeline) processRecording(rec *Recorder) {
 		finish(fmt.Errorf("recorder: %w", err))
 		return
 	}
-	info("[PROC] Audio captured: %.2fs  →  %s", audioDur.Seconds(), wavPath)
+	slog.Info("[PROC] Audio captured", "duration", audioDur, "path", wavPath)
 	defer os.Remove(wavPath)
 
 	if audioDur < 250*time.Millisecond {
-		info("[PROC] Recording too short (%.0fms < 250ms) — skipping ASR", float64(audioDur.Milliseconds()))
+		slog.Info("[PROC] Recording too short — skipping ASR", "duration", audioDur, "minimum", 250*time.Millisecond)
 		finish(nil)
 		return
 	}
 
-	info("[PROC] Sending %.2fs of audio to ASR: %s", audioDur.Seconds(), cfg.ASRURL)
+	slog.Info("[PROC] Sending audio to ASR", "duration", audioDur, "url", cfg.ASRURL)
 	asrStart := time.Now()
 	ctx, cancel := context.WithTimeout(
 		context.Background(),
@@ -220,25 +221,25 @@ func (p *Pipeline) processRecording(rec *Recorder) {
 	}
 
 	if strings.TrimSpace(transcript) == "" {
-		info("[PROC] ASR returned empty transcript (no speech detected) — %.2fs", asrElapsed.Seconds())
+		slog.Info("[PROC] ASR returned empty transcript (no speech detected)", "elapsed", asrElapsed)
 		finish(nil)
 		return
 	}
 
-	info("[PROC] ASR completed in %.2fs — %d chars", asrElapsed.Seconds(), len(transcript))
+	slog.Info("[PROC] ASR completed", "elapsed", asrElapsed, "chars", len(transcript))
 
 	pasted, pasteErr := deliverText(transcript, &cfg)
 	switch {
 	case pasteErr != nil:
 		// Surface it, but keep going: the transcript still goes to history.
-		info("[ERROR] Delivery failed: %v", pasteErr)
+		slog.Error("[PROC] Delivery failed", "error", pasteErr)
 		p.emitError(fmt.Errorf("delivery failed: %w", pasteErr))
 	case pasted:
-		info("[PROC] Pasted %d chars", len(transcript))
+		slog.Info("[PROC] Pasted", "chars", len(transcript))
 	case cfg.CopyToClipboard:
-		info("[PROC] Copied %d chars to clipboard (auto-paste off)", len(transcript))
+		slog.Info("[PROC] Copied to clipboard (auto-paste off)", "chars", len(transcript))
 	default:
-		info("[PROC] Recognized %d chars (delivery disabled — history only)", len(transcript))
+		slog.Info("[PROC] Recognized (delivery disabled — history only)", "chars", len(transcript))
 	}
 
 	entry := HistoryEntry{Time: time.Now(), Text: transcript, DurationSec: audioDur.Seconds()}
