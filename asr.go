@@ -80,6 +80,10 @@ func transcribeFile(ctx context.Context, c *Config, wavPath string) (string, err
 		}
 		req.Header.Set("Content-Type", contentType)
 		req.Header.Set("Accept", "text/plain")
+		if c.AuthHeaderName != "" {
+			req.Header.Set(c.AuthHeaderName, c.AuthHeaderValue)
+			dbg("[ASR] Auth header %q attached", c.AuthHeaderName)
+		}
 
 		dbg("[ASR] Sending POST to %s (attempt %d)...", endpoint, attempt)
 		tStart := time.Now()
@@ -115,9 +119,6 @@ func transcribeFile(ctx context.Context, c *Config, wavPath string) (string, err
 
 		transcript := strings.TrimSpace(string(body2))
 		info("[ASR] Transcription received in %.2fs  (%d chars)", roundTrip.Seconds(), len(transcript))
-		if debugMode && len(transcript) > 0 {
-			dbg("[ASR] Full transcript: %q", clip(transcript, 400))
-		}
 		return transcript, nil
 	}
 
@@ -141,7 +142,6 @@ func buildMultipartBody(fileBytes []byte, filename string) (io.Reader, string, e
 		return nil, "", fmt.Errorf("multipart close: %w", err)
 	}
 
-	dbg("[ASR] Multipart body: %d bytes  content-type: %s", buf.Len(), w.FormDataContentType())
 	return &buf, w.FormDataContentType(), nil
 }
 

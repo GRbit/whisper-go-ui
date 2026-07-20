@@ -24,17 +24,14 @@ func pasteText(text string) {
 	dbg("[PASTE] Text to paste (%d chars): %q", len(text), clip(text, 120))
 
 	// ── 1. Write to clipboard ──────────────────────────────────────────
-	dbg("[PASTE] Writing to system clipboard via robotgo.WriteAll...")
 	robotgo.WriteAll(text)
 
 	// Brief pause: give the clipboard manager time to propagate the new
 	// content before we send the paste keystroke.
 	// 150 ms is conservative but reliable across DE/clipboard manager combos.
-	dbg("[PASTE] Waiting 150ms for clipboard propagation...")
 	time.Sleep(150 * time.Millisecond)
 
 	// ── 2. Send Ctrl+V to the focused window ──────────────────────────
-	dbg("[PASTE] Sending Ctrl+V (KeyTap v, lctrl)...")
 	robotgo.KeyTap("v", "lctrl")
 
 	// Small post-paste delay — lets the receiving app process the event

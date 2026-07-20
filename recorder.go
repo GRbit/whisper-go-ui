@@ -5,9 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
-	"math"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/gordonklaus/portaudio"
@@ -82,8 +80,6 @@ func (r *Recorder) capture() (string, time.Duration, error) {
 
 	dbg("[REC] capture(): device=%q  nativeSR=%.0fHz  targetSR=%dHz  ratio=%.4f",
 		dev.Name, actualSR, whisperSampleRate, ratio)
-	dbg("[REC] capture(): channels=%d  framesPerBuffer=%d  lowLatency=%.4fs",
-		channels, framesPerBuffer, dev.DefaultLowInputLatency.Seconds())
 
 	// Allocate raw input buffer (native sample rate)
 	inputBuf := make([]int16, framesPerBuffer)
@@ -123,17 +119,12 @@ func (r *Recorder) capture() (string, time.Duration, error) {
 		samples    []int16 // downsampled, 16-kHz
 		cursor     float64
 		frameCount int
-		vuMax      float64
 	)
 	startWall := time.Now()
 
 	// Periodic progress ticker — fires every 2 s
 	progressTicker := time.NewTicker(2 * time.Second)
 	defer progressTicker.Stop()
-
-	// VU-meter ticker (debug only) — fires every 200 ms
-	vuTicker := time.NewTicker(200 * time.Millisecond)
-	defer vuTicker.Stop()
 
 	dbg("[REC] Entering capture loop (stop signal on stopCh)...")
 
@@ -161,40 +152,12 @@ captureLoop:
 		default:
 		}
 
-		// ── Debug VU meter ─────────────────────────────────────────
-		if debugMode {
-			select {
-			case <-vuTicker.C:
-				vu := int(vuMax / 32768.0 * 32)
-				if vu > 32 {
-					vu = 32
-				}
-				fmt.Printf("\r[REC] VU: [%s%s] %.1fs  %d frm",
-					strings.Repeat("█", vu),
-					strings.Repeat("░", 32-vu),
-					time.Since(startWall).Seconds(),
-					frameCount,
-				)
-				vuMax = 0
-			default:
-			}
-		}
-
 		// ── Blocking read — returns after framesPerBuffer frames ───
 		if err := stream.Read(); err != nil {
 			log.Printf("[REC] stream.Read() error: %v — stopping capture", err)
 			break captureLoop
 		}
 		frameCount++
-
-		// Track peak amplitude for VU meter
-		if debugMode {
-			for _, v := range inputBuf {
-				if a := math.Abs(float64(v)); a > vuMax {
-					vuMax = a
-				}
-			}
-		}
 
 		// ── Downsample native SR → 16 kHz (nearest-neighbour) ─────
 		// This is a simple decimation; no anti-alias filter, but perfectly
@@ -204,11 +167,6 @@ captureLoop:
 			cursor += ratio
 		}
 		cursor -= float64(len(inputBuf))
-	}
-
-	if debugMode {
-		// Newline after VU meter line
-		fmt.Println()
 	}
 
 	wallDur := time.Since(startWall)
@@ -229,9 +187,8 @@ captureLoop:
 	// ── Build WAV and write to temp file ──────────────────────────────
 	dbg("[REC] Building WAV (PCM-16 mono %dHz, %d samples)...", whisperSampleRate, len(samples))
 	wavData := buildWAV(samples, whisperSampleRate)
-	dbg("[REC] WAV size: %d bytes (%.1f KiB)", len(wavData), float64(len(wavData))/1024)
 
-	f, err := os.CreateTemp(cfg.TempDir, "wpaste-*.wav")
+	f, err := os.CreateTemp("", "wpaste-*.wav")
 	if err != nil {
 		return "", 0, fmt.Errorf("os.CreateTemp: %w", err)
 	}
