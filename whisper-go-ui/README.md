@@ -10,7 +10,7 @@ server → paste the transcript into the focused window (clipboard + Ctrl+V).
 
 - **System tray icon** with four states: gray (waiting), red (recording),
   amber (transcribing), green (pasted, shown for 2 s). Pure-Go D-Bus
-  StatusNotifierItem via `fyne.io/systray` — the XFCE panel's status tray
+  StatusNotifierItem via `fyne.io/systray`, the XFCE panel's status tray
   plugin picks it up natively.
 - **Global hotkey** (default `ctrl+shift+r`, toggle mode) via gohook/XRecord —
   passive observation, never conflicts with other apps, hot-swappable from
@@ -46,7 +46,58 @@ go vet -tags webkit2_41 ./...
 go test -tags webkit2_41 -race ./...
 ```
 
-Tray icons are committed as PNGs; regenerate with `go generate ./icons`.
+Tray icons are committed as PNGs; regenerate with `go generate ./icons`
+(also renders `build/appicon.png` and the `build/icons/*.png` sizes below).
+
+## Desktop integration (optional)
+
+The app sets its window icon (`_NET_WM_ICON`), which titlebars use — but
+most taskbar/dock plugins instead resolve icons by matching the window's
+WM_CLASS (`whisper-go-ui`) against a `.desktop` entry and looking the icon up
+in the icon theme at small fixed sizes. The app deliberately does **not**
+install anything into your home directory; run `make install` (or
+`make uninstall`) to apply exactly the steps below, or run them manually
+from the `whisper-go-ui` directory:
+
+```sh
+# the binary
+mkdir -p ~/.local/bin
+cp build/bin/whisper-go-ui ~/.local/bin/whisper-go-ui
+
+# icons for the hicolor theme (pre-rendered, from build/icons/)
+for size in 16 22 24 32 48 64 128 256 512; do
+  mkdir -p ~/.local/share/icons/hicolor/${size}x${size}/apps
+  cp build/icons/${size}.png ~/.local/share/icons/hicolor/${size}x${size}/apps/whisper-go-ui.png
+done
+
+# application menu / taskbar entry
+mkdir -p ~/.local/share/applications
+cat > ~/.local/share/applications/whisper-go-ui.desktop <<EOF
+[Desktop Entry]
+Type=Application
+Name=Whisper Transcriber
+Comment=Voice transcription with hotkey paste
+Exec=$HOME/.local/bin/whisper-go-ui
+Icon=whisper-go-ui
+Terminal=false
+Categories=Utility;AudioVideo;
+StartupWMClass=whisper-go-ui
+EOF
+```
+
+After a rebuild, refresh the installed binary with the same `cp`.
+
+If `~/.local/share/icons/hicolor/icon-theme.cache` exists on your system,
+refresh it too (a stale cache hides new icons):
+`gtk-update-icon-cache --force --ignore-theme-index ~/.local/share/icons/hicolor`
+
+To undo everything:
+
+```sh
+rm -f ~/.local/bin/whisper-go-ui
+rm -f ~/.local/share/applications/whisper-go-ui.desktop
+rm -f ~/.local/share/icons/hicolor/*/apps/whisper-go-ui.png
+```
 
 ## Note on WebKit and GPUs
 
