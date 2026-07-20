@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync/atomic"
 
 	"github.com/gordonklaus/portaudio"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -20,10 +21,18 @@ type App struct {
 	hotkey   *HotkeyListener
 
 	devices []*portaudio.DeviceInfo
+
+	// winVisible tracks window visibility for the tray left-click toggle
+	// (wails v2 has no visibility query). Tray actions update it directly;
+	// the frontend confirms via "window:visibility" page-visibility events,
+	// which also covers the window close button and minimize.
+	winVisible atomic.Bool
 }
 
 func NewApp() *App {
-	return &App{cfg: &configStore{}}
+	a := &App{cfg: &configStore{}}
+	a.winVisible.Store(true) // the window starts visible
+	return a
 }
 
 // startup wires everything together once Wails hands us the context.
@@ -63,10 +72,35 @@ func (a *App) startup(ctx context.Context) {
 	a.hotkey = NewHotkeyListener(combo, a.pipeline.Toggle)
 	go a.hotkey.Run()
 
+	runtime.EventsOn(ctx, "window:visibility", func(args ...interface{}) {
+		if len(args) > 0 {
+			if visible, ok := args[0].(bool); ok {
+				a.winVisible.Store(visible)
+			}
+		}
+	})
+
 	a.tray.Start(
-		func() { runtime.WindowShow(a.ctx) },
+		a.toggleWindow,
+		a.showWindow,
 		func() { runtime.Quit(a.ctx) },
 	)
+}
+
+// showWindow makes the window visible and records that.
+func (a *App) showWindow() {
+	runtime.WindowShow(a.ctx)
+	a.winVisible.Store(true)
+}
+
+// toggleWindow is the tray left-click action.
+func (a *App) toggleWindow() {
+	if a.winVisible.Load() {
+		runtime.WindowHide(a.ctx)
+		a.winVisible.Store(false)
+	} else {
+		a.showWindow()
+	}
 }
 
 // shutdown releases global resources.

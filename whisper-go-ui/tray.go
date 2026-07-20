@@ -22,9 +22,15 @@ func NewTray() *Tray {
 	return t
 }
 
-// Start launches the tray loop. onShow/onQuit are called from a tray-owned
-// goroutine when the corresponding menu item is clicked.
-func (t *Tray) Start(onShow, onQuit func()) {
+// Start launches the tray loop. onToggle runs on left-click (SNI Activate);
+// onShow/onQuit are called from a tray-owned goroutine when the corresponding
+// menu item is clicked. The right-click menu is rendered by the tray host
+// from the exported dbusmenu, independent of these callbacks.
+func (t *Tray) Start(onToggle, onShow, onQuit func()) {
+	// Must be set before Run: the SNI ItemIsMenu property is derived from it
+	// at registration time, and ItemIsMenu=false is what makes the host send
+	// left clicks to Activate instead of opening the menu.
+	systray.SetOnTapped(onToggle)
 	go systray.Run(func() {
 		systray.SetIcon(icons.Waiting)
 		systray.SetTooltip("Whisper Transcriber — waiting")

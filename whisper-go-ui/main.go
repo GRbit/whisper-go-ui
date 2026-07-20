@@ -8,7 +8,6 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 //go:embed all:frontend/dist
@@ -39,11 +38,11 @@ func main() {
 		Title:             "Whisper Transcriber",
 		Width:             900,
 		Height:            640,
-		HideWindowOnClose: true, // close button minimizes to tray
+		HideWindowOnClose: true, // close button hides to tray
 		SingleInstanceLock: &options.SingleInstanceLock{
 			UniqueId: "com.grbit.whisper-go-ui",
 			OnSecondInstanceLaunch: func(_ options.SecondInstanceData) {
-				runtime.WindowShow(app.ctx)
+				app.showWindow()
 			},
 		},
 		AssetServer: &assetserver.Options{

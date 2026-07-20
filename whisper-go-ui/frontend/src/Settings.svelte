@@ -37,6 +37,11 @@
     }
   }
 
+  // Instant preview; persisted only on Save (reverts on restart otherwise).
+  function applyTheme() {
+    if (cfg) document.documentElement.dataset.theme = cfg.theme
+  }
+
   function deviceLabel(d: main.AudioDevice): string {
     let tags = []
     if (d.isPulse) tags.push('PulseAudio/PipeWire')
@@ -133,6 +138,20 @@
     </section>
 
     <section>
+      <h2>Appearance</h2>
+      <div class="radio-group">
+        <label class="inline">
+          <input type="radio" bind:group={cfg.theme} value="dark" onchange={applyTheme} />
+          <span>Dark</span>
+        </label>
+        <label class="inline">
+          <input type="radio" bind:group={cfg.theme} value="light" onchange={applyTheme} />
+          <span>Light (Solarized)</span>
+        </label>
+      </div>
+    </section>
+
+    <section>
       <label class="inline">
         <input type="checkbox" bind:checked={cfg.debug} />
         <span>Debug logging</span>
@@ -212,7 +231,7 @@
   }
 
   .field-error {
-    color: #ffb4ae;
+    color: var(--error-fg);
     font-size: 12px;
     white-space: pre-wrap;
   }

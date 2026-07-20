@@ -7,6 +7,8 @@
 }
 
 :root {
+  /* dark theme (default) */
+  color-scheme: dark;
   --bg: #181a20;
   --bg-panel: #21242c;
   --bg-input: #2a2e38;
@@ -18,6 +20,26 @@
   --amber: #f0a030;
   --green: #2ea043;
   --gray: #8a8a8a;
+  --error-bg: #4a1f1d;
+  --error-fg: #ffb4ae;
+}
+
+:root[data-theme="light"] {
+  /* solarized light, slightly brightened */
+  color-scheme: light;
+  --bg: #fffcf2;
+  --bg-panel: #f6efdb;
+  --bg-input: #fdf6e3;
+  --border: #dcd3b6;
+  --text: #586e75;
+  --text-dim: #839496;
+  --accent: #268bd2;
+  --red: #dc322f;
+  --amber: #b58900;
+  --green: #859900;
+  --gray: #93a1a1;
+  --error-bg: #f6d9d5;
+  --error-fg: #c1362f;
 }
 
 * {
@@ -61,7 +83,39 @@ select {
   outline: none;
 }
 
+/* WebKit renders the <select> popup with native colors driven by
+   color-scheme; option colors are set explicitly as well so the list
+   matches the theme instead of showing dark text on a white popup. */
+select option {
+  color: var(--text);
+  background: var(--bg-input);
+}
+
 input:focus,
 select:focus {
   border-color: var(--accent);
+}
+
+/* Wider, theme-aware scrollbars (custom styling replaces the native
+   overlay scrollbar, so pick an explicit width). */
+::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-panel);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 7px;
+  /* inset padding so the thumb reads narrower than the track */
+  border: 3px solid var(--bg-panel);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+  background-clip: padding-box;
 }

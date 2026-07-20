@@ -15,6 +15,12 @@ const (
 	HistoryDisk = "disk" // additionally persist to a JSONL file under XDG data dir
 )
 
+// UI themes.
+const (
+	ThemeDark  = "dark"
+	ThemeLight = "light"
+)
+
 // Config is the persisted application configuration.
 // JSON tags match the legacy ~/.config/whisper-go-ui/config.json schema so an
 // existing file from the previous app version loads cleanly; new fields simply
@@ -33,6 +39,7 @@ type Config struct {
 	AuthHeaderName  string `json:"authHeaderName"`
 	AuthHeaderValue string `json:"authHeaderValue"`
 	HistoryMode     string `json:"historyMode"` // "ram" | "disk"
+	Theme           string `json:"theme"`       // "dark" | "light"
 }
 
 func defaultConfig() *Config {
@@ -46,6 +53,7 @@ func defaultConfig() *Config {
 		HotkeyMode:  "toggle",
 		DeviceID:    -1,
 		HistoryMode: HistoryRAM,
+		Theme:       ThemeDark,
 	}
 }
 
@@ -162,6 +170,9 @@ func (c *Config) normalize() {
 	if c.HistoryMode != HistoryDisk {
 		c.HistoryMode = HistoryRAM
 	}
+	if c.Theme != ThemeLight {
+		c.Theme = ThemeDark
+	}
 	if c.DeviceID < -1 {
 		c.DeviceID = -1
 	}
@@ -195,6 +206,9 @@ func (c *Config) validate() error {
 	}
 	if c.HistoryMode != HistoryRAM && c.HistoryMode != HistoryDisk {
 		return fmt.Errorf("history mode must be %q or %q", HistoryRAM, HistoryDisk)
+	}
+	if c.Theme != ThemeDark && c.Theme != ThemeLight {
+		return fmt.Errorf("theme must be %q or %q", ThemeDark, ThemeLight)
 	}
 	return nil
 }

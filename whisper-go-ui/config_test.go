@@ -47,6 +47,9 @@ func TestLoadConfigLegacySchema(t *testing.T) {
 	if c.HistoryMode != HistoryRAM {
 		t.Errorf("HistoryMode should default to ram, got %q", c.HistoryMode)
 	}
+	if c.Theme != ThemeDark {
+		t.Errorf("Theme should default to dark, got %q", c.Theme)
+	}
 }
 
 func TestLoadConfigMissingFile(t *testing.T) {
@@ -110,6 +113,8 @@ func TestConfigValidate(t *testing.T) {
 		{"timeout too big", func(c *Config) { c.ASRTimeout = 601 }, false},
 		{"retries zero", func(c *Config) { c.ASRRetries = 0 }, false},
 		{"bad history mode", func(c *Config) { c.HistoryMode = "cloud" }, false},
+		{"light theme ok", func(c *Config) { c.Theme = ThemeLight }, true},
+		{"bad theme", func(c *Config) { c.Theme = "solarized" }, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

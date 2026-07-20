@@ -79,7 +79,7 @@
   }
 
   .clear:hover {
-    color: #ffb4ae;
+    color: var(--error-fg);
     border-color: var(--red);
   }
 

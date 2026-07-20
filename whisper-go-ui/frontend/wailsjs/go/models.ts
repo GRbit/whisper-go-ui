@@ -35,6 +35,7 @@ export namespace main {
 	    authHeaderName: string;
 	    authHeaderValue: string;
 	    historyMode: string;
+	    theme: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Config(source);
@@ -54,6 +55,7 @@ export namespace main {
 	        this.authHeaderName = source["authHeaderName"];
 	        this.authHeaderValue = source["authHeaderValue"];
 	        this.historyMode = source["historyMode"];
+	        this.theme = source["theme"];
 	    }
 	}
 	export class HistoryEntry {

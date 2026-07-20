@@ -2,8 +2,8 @@
   import { onMount } from 'svelte'
   import Settings from './Settings.svelte'
   import History from './History.svelte'
-  import { GetState, ToggleRecording } from '../wailsjs/go/main/App.js'
-  import { EventsOn } from '../wailsjs/runtime/runtime.js'
+  import { GetConfig, GetState, ToggleRecording } from '../wailsjs/go/main/App.js'
+  import { EventsOn, EventsEmit } from '../wailsjs/runtime/runtime.js'
 
   let tab: 'settings' | 'history' = $state('settings')
   let appState: string = $state('waiting')
@@ -17,12 +17,19 @@
   }
 
   onMount(() => {
+    GetConfig().then((c) => (document.documentElement.dataset.theme = c.theme))
     GetState().then((s) => (appState = s))
     EventsOn('state:changed', (s: string) => {
       appState = s
       if (s === 'recording') lastError = ''
     })
     EventsOn('pipeline:error', (msg: string) => (lastError = msg))
+    // Keep the backend's window-visibility flag (used by the tray left-click
+    // toggle) in sync — fires when the window is hidden via the close button,
+    // minimize, or WindowHide.
+    document.addEventListener('visibilitychange', () =>
+      EventsEmit('window:visibility', document.visibilityState === 'visible'),
+    )
   })
 </script>
 
@@ -117,8 +124,8 @@
     justify-content: space-between;
     align-items: center;
     gap: 12px;
-    background: #4a1f1d;
-    color: #ffb4ae;
+    background: var(--error-bg);
+    color: var(--error-fg);
     padding: 8px 16px;
     font-size: 13px;
     overflow: hidden;
@@ -129,7 +136,7 @@
   .error-bar .dismiss {
     background: transparent;
     border: none;
-    color: #ffb4ae;
+    color: var(--error-fg);
     flex-shrink: 0;
   }
 
