@@ -142,6 +142,9 @@ func (a *App) SaveConfig(c Config) error {
 	}
 	if c.HistoryMode != old.HistoryMode {
 		a.history.SetMode(c.HistoryMode)
+		// A mode switch can change the visible list (disk entries merge
+		// in); the History tab stays mounted and reloads on this event.
+		runtime.EventsEmit(a.ctx, "history:added")
 	}
 	return nil
 }

@@ -236,8 +236,10 @@
 {/if}
 
 <style>
+  /* The form spans the whole content width so the sticky save bar can
+     stretch across the window; the option sections keep the readable
+     640px cap themselves. */
   form {
-    max-width: 640px;
     display: flex;
     flex-direction: column;
     gap: 22px;
@@ -245,6 +247,7 @@
   }
 
   section {
+    max-width: 640px;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -343,10 +346,24 @@
     color: var(--green);
   }
 
+  /* Keep the Save button reachable from any scroll position: the bar
+     sticks to the bottom edge of the scrollable <main> while the form
+     is scrolled. Its own padding doubles as the form's bottom spacing,
+     since <main> has no bottom padding (content would show through).
+     Panel background + border mirror the header so the bar reads as
+     chrome, not as part of the scrolling form. The negative side
+     margins cancel main's 20px side padding (see App.svelte) so the
+     bar runs the full window width. */
   .actions {
     display: flex;
     align-items: center;
     gap: 12px;
+    position: sticky;
+    bottom: 0;
+    background: var(--bg-panel);
+    border-top: 1px solid var(--border);
+    margin: 0 -20px;
+    padding: 12px 20px 16px;
   }
 
   .save {

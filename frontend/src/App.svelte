@@ -77,12 +77,15 @@
   </div>
 {/if}
 
+<!-- Both tabs stay mounted; hidden toggles visibility. An {#if} would
+     destroy the Settings component on switch, discarding unsaved edits. -->
 <main bind:this={mainEl}>
-  {#if tab === 'settings'}
+  <div hidden={tab !== 'settings'}>
     <Settings />
-  {:else}
+  </div>
+  <div hidden={tab !== 'history'}>
     <History />
-  {/if}
+  </div>
 </main>
 
 <style>
@@ -163,9 +166,12 @@
     flex-shrink: 0;
   }
 
+  /* No bottom padding: the Settings save bar sticks to the scroller's
+     bottom edge, and any scroller padding below it would let content
+     peek through under the bar. Tabs add their own bottom spacing. */
   main {
     flex: 1;
     overflow-y: auto;
-    padding: 20px;
+    padding: 20px 20px 0;
   }
 </style>

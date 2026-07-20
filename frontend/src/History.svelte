@@ -95,6 +95,8 @@
     flex-direction: column;
     gap: 12px;
     text-align: left;
+    /* <main> has no bottom padding (see App.svelte), pad here instead */
+    margin-bottom: 20px;
   }
 
   li {
