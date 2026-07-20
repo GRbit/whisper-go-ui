@@ -50,6 +50,10 @@ func TestLoadConfigLegacySchema(t *testing.T) {
 	if c.Theme != ThemeDark {
 		t.Errorf("Theme should default to dark, got %q", c.Theme)
 	}
+	if !c.CopyToClipboard || !c.AutoPaste || c.PasteCombo != PasteCtrlV {
+		t.Errorf("paste behaviour should default to copy+paste with ctrl+v, got copy=%v paste=%v combo=%q",
+			c.CopyToClipboard, c.AutoPaste, c.PasteCombo)
+	}
 }
 
 func TestLoadConfigMissingFile(t *testing.T) {
@@ -115,6 +119,11 @@ func TestConfigValidate(t *testing.T) {
 		{"bad history mode", func(c *Config) { c.HistoryMode = "cloud" }, false},
 		{"light theme ok", func(c *Config) { c.Theme = ThemeLight }, true},
 		{"bad theme", func(c *Config) { c.Theme = "solarized" }, false},
+		{"control+v forbidden", func(c *Config) { c.HotkeyStr = "control+v" }, false},
+		{"ctrl+shift+v forbidden", func(c *Config) { c.HotkeyStr = "ctrl+shift+v" }, false},
+		{"paste combo ctrl+shift+v ok", func(c *Config) { c.PasteCombo = PasteCtrlShiftV }, true},
+		{"bad paste combo", func(c *Config) { c.PasteCombo = "middle-click" }, false},
+		{"delivery fully off ok", func(c *Config) { c.CopyToClipboard = false; c.AutoPaste = false }, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

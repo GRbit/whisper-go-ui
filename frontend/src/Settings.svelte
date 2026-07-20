@@ -124,6 +124,36 @@
     </section>
 
     <section>
+      <h2>Paste behaviour</h2>
+      <label class="inline">
+        <input type="checkbox" bind:checked={cfg.copyToClipboard} />
+        <span>Copy recognized text to the clipboard</span>
+      </label>
+      <label class="inline">
+        <input type="checkbox" bind:checked={cfg.autoPaste} />
+        <span>Paste it instantly into the focused window</span>
+      </label>
+      <div class="radio-group indent" class:disabled={!cfg.autoPaste}>
+        <label class="inline">
+          <input type="radio" bind:group={cfg.pasteCombo} value="ctrl+v" disabled={!cfg.autoPaste} />
+          <span>Ctrl+V</span>
+        </label>
+        <label class="inline">
+          <input type="radio" bind:group={cfg.pasteCombo} value="ctrl+shift+v" disabled={!cfg.autoPaste} />
+          <span>Ctrl+Shift+V (terminals)</span>
+        </label>
+      </div>
+      {#if !cfg.copyToClipboard && !cfg.autoPaste}
+        <p class="hint">Both off: recognized text only appears in History.</p>
+      {/if}
+      {#if !cfg.copyToClipboard && cfg.autoPaste}
+        <p class="hint">
+          Pasting still uses the clipboard briefly; the previous clipboard text is restored afterwards.
+        </p>
+      {/if}
+    </section>
+
+    <section>
       <h2>History</h2>
       <div class="radio-group">
         <label class="inline">
@@ -224,6 +254,19 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+  }
+
+  .radio-group.indent {
+    margin-left: 24px;
+  }
+
+  .radio-group.disabled span {
+    color: var(--text-dim);
+  }
+
+  .hint {
+    font-size: 12px;
+    color: var(--text-dim);
   }
 
   input.invalid {

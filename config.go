@@ -21,6 +21,12 @@ const (
 	ThemeLight = "light"
 )
 
+// Paste keystroke combos.
+const (
+	PasteCtrlV      = "ctrl+v"
+	PasteCtrlShiftV = "ctrl+shift+v" // terminals
+)
+
 // Config is the persisted application configuration.
 // JSON tags match the legacy ~/.config/whisper-go-ui/config.json schema so an
 // existing file from the previous app version loads cleanly; new fields simply
@@ -40,6 +46,13 @@ type Config struct {
 	AuthHeaderValue string `json:"authHeaderValue"`
 	HistoryMode     string `json:"historyMode"` // "ram" | "disk"
 	Theme           string `json:"theme"`       // "dark" | "light"
+
+	// What to do with the recognized text. Auto-paste works through the
+	// clipboard; with CopyToClipboard off the previous clipboard text is
+	// restored after the paste keystroke.
+	CopyToClipboard bool   `json:"copyToClipboard"`
+	AutoPaste       bool   `json:"autoPaste"`
+	PasteCombo      string `json:"pasteCombo"` // "ctrl+v" | "ctrl+shift+v"
 }
 
 func defaultConfig() *Config {
@@ -54,6 +67,10 @@ func defaultConfig() *Config {
 		DeviceID:    -1,
 		HistoryMode: HistoryRAM,
 		Theme:       ThemeDark,
+
+		CopyToClipboard: true,
+		AutoPaste:       true,
+		PasteCombo:      PasteCtrlV,
 	}
 }
 
@@ -173,6 +190,9 @@ func (c *Config) normalize() {
 	if c.Theme != ThemeLight {
 		c.Theme = ThemeDark
 	}
+	if c.PasteCombo != PasteCtrlShiftV {
+		c.PasteCombo = PasteCtrlV
+	}
 	if c.DeviceID < -1 {
 		c.DeviceID = -1
 	}
@@ -190,10 +210,11 @@ func (c *Config) validate() error {
 	if err != nil {
 		return fmt.Errorf("invalid hotkey %q: %w", c.HotkeyStr, err)
 	}
-	// The paste step sends a synthetic Ctrl+V; using it as the hotkey would
-	// re-trigger the pipeline from its own paste.
-	if hk.String() == "ctrl+v" {
-		return fmt.Errorf("ctrl+v cannot be used as the hotkey (it is the paste keystroke)")
+	// The paste step sends a synthetic Ctrl+V or Ctrl+Shift+V; using one of
+	// those as the hotkey would re-trigger the pipeline from its own paste.
+	switch hk.String() {
+	case "ctrl+v", "control+v", "ctrl+shift+v", "control+shift+v":
+		return fmt.Errorf("%s cannot be used as the hotkey (it is a paste keystroke)", hk)
 	}
 	if c.AuthHeaderName == "" && c.AuthHeaderValue != "" {
 		return fmt.Errorf("auth header value set but header name is empty")
@@ -209,6 +230,9 @@ func (c *Config) validate() error {
 	}
 	if c.Theme != ThemeDark && c.Theme != ThemeLight {
 		return fmt.Errorf("theme must be %q or %q", ThemeDark, ThemeLight)
+	}
+	if c.PasteCombo != PasteCtrlV && c.PasteCombo != PasteCtrlShiftV {
+		return fmt.Errorf("paste combo must be %q or %q", PasteCtrlV, PasteCtrlShiftV)
 	}
 	return nil
 }

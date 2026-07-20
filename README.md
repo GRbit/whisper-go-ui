@@ -18,6 +18,10 @@ server → paste the transcript into the focused window (clipboard + Ctrl+V).
 - **Settings UI**: ASR URL, optional auth header (name + value), language,
   engine, timeout/retries, hotkey with live validation, PortAudio input
   device selection, history storage mode, debug logging.
+- **Paste behaviour**: independent toggles for copying the recognized text
+  to the clipboard and for pasting it instantly; the paste keystroke can be
+  Ctrl+V or Ctrl+Shift+V (terminals). With clipboard-copy off, the previous
+  clipboard text is restored after the paste.
 - **Transcription history**: RAM-only (default) or persisted to
   `~/.local/share/whisper-go-ui/history.jsonl`, capped at 200 entries.
 - Window closes to tray; single-instance (second launch focuses the window).

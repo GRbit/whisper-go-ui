@@ -36,6 +36,9 @@ export namespace main {
 	    authHeaderValue: string;
 	    historyMode: string;
 	    theme: string;
+	    copyToClipboard: boolean;
+	    autoPaste: boolean;
+	    pasteCombo: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Config(source);
@@ -56,6 +59,9 @@ export namespace main {
 	        this.authHeaderValue = source["authHeaderValue"];
 	        this.historyMode = source["historyMode"];
 	        this.theme = source["theme"];
+	        this.copyToClipboard = source["copyToClipboard"];
+	        this.autoPaste = source["autoPaste"];
+	        this.pasteCombo = source["pasteCombo"];
 	    }
 	}
 	export class HistoryEntry {

@@ -227,9 +227,15 @@ func (p *Pipeline) processRecording(rec *Recorder) {
 
 	info("[PROC] ASR completed in %.2fs — %d chars", asrElapsed.Seconds(), len(transcript))
 
-	info("[PROC] Pasting %d chars...", len(transcript))
-	pasteText(transcript)
-	info("[PROC] ✓ Pasted successfully")
+	pasted := deliverText(transcript, &cfg)
+	switch {
+	case pasted:
+		info("[PROC] Pasted %d chars", len(transcript))
+	case cfg.CopyToClipboard:
+		info("[PROC] Copied %d chars to clipboard (auto-paste off)", len(transcript))
+	default:
+		info("[PROC] Recognized %d chars (delivery disabled — history only)", len(transcript))
+	}
 
 	entry := HistoryEntry{Time: time.Now(), Text: transcript, DurationSec: audioDur.Seconds()}
 	p.history.Add(entry)
@@ -239,6 +245,12 @@ func (p *Pipeline) processRecording(rec *Recorder) {
 	p.mu.Unlock()
 	if ctx2 != nil {
 		runtime.EventsEmit(ctx2, "history:added", entry)
+	}
+
+	// With delivery fully disabled there is no paste to announce.
+	if !pasted && !cfg.CopyToClipboard {
+		p.setState(StateIdle)
+		return
 	}
 
 	// Show the "pasted" state for 2s, unless a new recording takes over.
