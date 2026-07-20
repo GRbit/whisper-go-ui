@@ -43,13 +43,16 @@ var keyRawcodes = map[string][]uint16{
 	"left":      {65361},
 	"right":     {65363},
 
-	// Letters — uppercase X11 keysym == ASCII uppercase
-	"a": {65}, "b": {66}, "c": {67}, "d": {68}, "e": {69},
-	"f": {70}, "g": {71}, "h": {72}, "i": {73}, "j": {74},
-	"k": {75}, "l": {76}, "m": {77}, "n": {78}, "o": {79},
-	"p": {80}, "q": {81}, "r": {82}, "s": {83}, "t": {84},
-	"u": {85}, "v": {86}, "w": {87}, "x": {88}, "y": {89},
-	"z": {90},
+	// Letters — X11 keysyms match ASCII, but gohook reports the keysym
+	// computed with the live modifier state: uppercase when shift is held,
+	// lowercase otherwise (and inverted under caps lock). List both so
+	// combos work with and without shift.
+	"a": {65, 97}, "b": {66, 98}, "c": {67, 99}, "d": {68, 100}, "e": {69, 101},
+	"f": {70, 102}, "g": {71, 103}, "h": {72, 104}, "i": {73, 105}, "j": {74, 106},
+	"k": {75, 107}, "l": {76, 108}, "m": {77, 109}, "n": {78, 110}, "o": {79, 111},
+	"p": {80, 112}, "q": {81, 113}, "r": {82, 114}, "s": {83, 115}, "t": {84, 116},
+	"u": {85, 117}, "v": {86, 118}, "w": {87, 119}, "x": {88, 120}, "y": {89, 121},
+	"z": {90, 122},
 
 	// Digits
 	"0": {48}, "1": {49}, "2": {50}, "3": {51}, "4": {52},
