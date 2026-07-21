@@ -162,14 +162,20 @@ func (p *Pipeline) stopRecording() {
 	p.mu.Lock()
 	rec := p.activeRec
 	p.activeRec = nil
-	if p.state == StateRecording {
+	state := p.state
+	if state == StateRecording {
 		p.state = StateProcessing
 	}
 	p.mu.Unlock()
 
 	if rec == nil {
-		slog.Warn("[REC] stopRecording called with no active recorder")
-		p.setState(StateIdle)
+		// Two rapid presses can both enter stopRecording: the first one took
+		// the recorder and owns the Processing state. Only fall back to Idle
+		// when the state machine really was Recording with no recorder.
+		slog.Warn("[REC] stopRecording called with no active recorder", "state", state.String())
+		if state == StateRecording {
+			p.setState(StateIdle)
+		}
 		return
 	}
 
