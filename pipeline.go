@@ -275,11 +275,25 @@ func (p *Pipeline) processRecording(rec *Recorder) {
 }
 
 // StopActiveRecorder aborts a recording in progress (used at shutdown).
+// It waits for the capture goroutine to finish: the caller tears down
+// PortAudio right after, and Terminate during an active stream.Read is a
+// cgo use-after-teardown. The abandoned WAV file, if any, is removed.
 func (p *Pipeline) StopActiveRecorder() {
 	p.mu.Lock()
 	rec := p.activeRec
+	p.activeRec = nil
 	p.mu.Unlock()
-	if rec != nil {
-		rec.Stop()
+	if rec == nil {
+		return
+	}
+	rec.Stop()
+	wavPath, _, err := rec.Wait()
+	if err != nil {
+		slog.Debug("[REC] Recorder finished with error during shutdown stop", "error", err)
+	}
+	if wavPath != "" {
+		if rmErr := os.Remove(wavPath); rmErr != nil {
+			slog.Debug("[REC] Removing abandoned WAV failed", "path", wavPath, "error", rmErr)
+		}
 	}
 }

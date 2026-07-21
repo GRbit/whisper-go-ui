@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"sync/atomic"
+	"testing"
+	"time"
+)
 
 // newTestPipeline builds a Pipeline with no Wails context (setState skips
 // EventsEmit when ctx is nil) and a not-ready tray (SetState buffers).
@@ -30,6 +34,39 @@ func TestStopRecordingKeepsProcessingState(t *testing.T) {
 
 	if got := p.State(); got != StateProcessing {
 		t.Errorf("state after duplicate stopRecording = %v, want %v", got, StateProcessing)
+	}
+}
+
+// TestStopActiveRecorderWaitsForCapture guards the shutdown teardown order:
+// shutdown() calls StopActiveRecorder and then portaudio.Terminate, so
+// StopActiveRecorder must not return while the capture goroutine may still
+// be inside stream.Read (cgo use-after-teardown otherwise).
+//
+// Test mechanics: a stand-in capture goroutine reacts to the Stop signal
+// with a deliberate 50ms delay before flipping `finished` and delivering
+// the result. If StopActiveRecorder only signals Stop without waiting for
+// the result, it returns during that delay and sees finished == false.
+func TestStopActiveRecorderWaitsForCapture(t *testing.T) {
+	p := newTestPipeline(t)
+
+	rec := NewRecorder(nil) // capture never started; we fake its goroutine
+	var finished atomic.Bool
+	go func() {
+		<-rec.stopCh
+		time.Sleep(50 * time.Millisecond)
+		finished.Store(true)
+		rec.resCh <- recResult{}
+	}()
+
+	p.mu.Lock()
+	p.state = StateRecording
+	p.activeRec = rec
+	p.mu.Unlock()
+
+	p.StopActiveRecorder()
+
+	if !finished.Load() {
+		t.Error("StopActiveRecorder returned before the capture goroutine finished")
 	}
 }
 
