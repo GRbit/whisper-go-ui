@@ -175,11 +175,13 @@ func (p *Pipeline) startRecording() {
 
 	rec := NewRecorder(device)
 	p.activeRec = rec
+	old := p.state
 	p.state = StateRecording
+	ctx := p.ctx
 	p.mu.Unlock()
 
 	slog.Info("[REC] Recording started", "device", device.Name)
-	p.setState(StateRecording) // re-emit for tray/UI (state already set under lock)
+	p.announceState(old, StateRecording, ctx)
 	rec.Start()
 }
 
@@ -191,6 +193,7 @@ func (p *Pipeline) stopRecording() {
 	if state == StateRecording {
 		p.state = StateProcessing
 	}
+	ctx := p.ctx
 	p.mu.Unlock()
 
 	if rec == nil {
@@ -204,7 +207,7 @@ func (p *Pipeline) stopRecording() {
 		return
 	}
 
-	p.setState(StateProcessing)
+	p.announceState(state, StateProcessing, ctx)
 	go p.processRecording(rec)
 }
 

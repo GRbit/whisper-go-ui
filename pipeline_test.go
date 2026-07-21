@@ -1,6 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
+	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -35,6 +39,66 @@ func TestStopRecordingKeepsProcessingState(t *testing.T) {
 
 	if got := p.State(); got != StateProcessing {
 		t.Errorf("state after duplicate stopRecording = %v, want %v", got, StateProcessing)
+	}
+}
+
+// syncWriter is a goroutine-safe log sink: the processRecording goroutine
+// logs concurrently with the test reading the captured output.
+type syncWriter struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (w *syncWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buf.Write(p)
+}
+
+func (w *syncWriter) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buf.String()
+}
+
+// TestStopRecordingLogsTransition guards the transition log: stopRecording
+// used to mutate p.state under the lock and then call setState with the
+// same value, so the Recording -> Processing transition was compared
+// against itself and "[STATE] Transition" never logged.
+//
+// Test mechanics: a fake capture goroutine answers the Stop signal with an
+// error result, so processRecording settles back to Idle without touching
+// PortAudio or the network; the test polls for that settle before reading
+// the captured log.
+func TestStopRecordingLogsTransition(t *testing.T) {
+	w := &syncWriter{}
+	prev := slog.Default()
+	slog.SetDefault(newLogger(w))
+	defer slog.SetDefault(prev)
+
+	p := newTestPipeline(t)
+	rec := NewRecorder(nil)
+	go func() {
+		<-rec.stopCh
+		rec.resCh <- recResult{err: fmt.Errorf("fake capture aborted")}
+	}()
+
+	p.mu.Lock()
+	p.state = StateRecording
+	p.activeRec = rec
+	p.mu.Unlock()
+
+	p.stopRecording()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for p.State() != StateIdle && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	logs := w.String()
+	want := "from=recording to=transcribing"
+	if !strings.Contains(logs, want) {
+		t.Errorf("transition log missing %q in:\n%s", want, logs)
 	}
 }
 
