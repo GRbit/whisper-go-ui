@@ -16,6 +16,26 @@ import (
 	"log/slog"
 )
 
+// transcribe runs transcribeFile under the app's overall ASR time budget.
+func transcribe(c *Config, wavPath string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), asrTotalTimeout(c))
+	defer cancel()
+	return transcribeFile(ctx, c, wavPath)
+}
+
+// asrTotalTimeout is the budget for a whole transcription: the per-attempt
+// timeout (enforced by the HTTP client) times the attempt count, plus the
+// exponential backoff waits between attempts (2s, 4s, ...). A single
+// ASRTimeout here would let attempt 1 eat the entire budget and every
+// retry would die instantly with a cancelled context.
+func asrTotalTimeout(c *Config) time.Duration {
+	var backoff time.Duration
+	for attempt := 2; attempt <= c.ASRRetries; attempt++ {
+		backoff += time.Duration(1<<uint(attempt-1)) * time.Second
+	}
+	return time.Duration(c.ASRTimeout*c.ASRRetries)*time.Second + backoff
+}
+
 // transcribeFile sends the WAV file at wavPath to the remote ASR /asr endpoint
 // and returns the plain-text transcript.
 //

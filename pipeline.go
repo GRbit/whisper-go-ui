@@ -237,13 +237,7 @@ func (p *Pipeline) processRecording(rec *Recorder) {
 
 	slog.Info("[PROC] Sending audio to ASR", "duration", audioDur, "url", cfg.ASRURL)
 	asrStart := time.Now()
-	ctx, cancel := context.WithTimeout(
-		context.Background(),
-		time.Duration(cfg.ASRTimeout)*time.Second,
-	)
-	defer cancel()
-
-	transcript, err := transcribeFile(ctx, &cfg, wavPath)
+	transcript, err := transcribe(&cfg, wavPath)
 	asrElapsed := time.Since(asrStart)
 
 	if err != nil {

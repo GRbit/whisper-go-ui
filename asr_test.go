@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func writeTestWAV(t *testing.T) string {
@@ -136,6 +137,61 @@ func TestTranscribeRetriesOn500(t *testing.T) {
 	}
 	if n := calls.Load(); n != 2 {
 		t.Errorf("server calls = %d, want 2", n)
+	}
+}
+
+// TestTranscribeRetryAfterTimeout asserts a retry can actually run after a
+// per-attempt timeout. The first attempt hangs past the 1s per-attempt
+// timeout; the second responds instantly. The overall budget must cover
+// ASRTimeout x retries plus the 2s backoff wait, otherwise the outer
+// context (formerly a single ASRTimeout) is already dead when the retry
+// starts and it fails with "context cancelled while waiting for retry".
+func TestTranscribeRetryAfterTimeout(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			time.Sleep(1500 * time.Millisecond) // exceed the per-attempt timeout
+			return
+		}
+		w.Write([]byte("after retry"))
+	}))
+	defer srv.Close()
+
+	c := asrTestConfig(srv.URL)
+	c.ASRTimeout = 1
+	c.ASRRetries = 2
+
+	got, err := transcribe(c, writeTestWAV(t))
+	if err != nil {
+		t.Fatalf("transcribe: %v", err)
+	}
+	if got != "after retry" {
+		t.Errorf("transcript = %q", got)
+	}
+	if n := calls.Load(); n != 2 {
+		t.Errorf("server calls = %d, want 2", n)
+	}
+}
+
+// TestASRTotalTimeout pins the budget arithmetic: timeout x retries plus
+// the 2s/4s/... backoff waits between attempts.
+func TestASRTotalTimeout(t *testing.T) {
+	cases := []struct {
+		timeout, retries int
+		want             time.Duration
+	}{
+		{60, 1, 60 * time.Second},                 // no retries, no backoff
+		{60, 3, 3*60*time.Second + 6*time.Second}, // waits 2s + 4s
+		{1, 2, 2*time.Second + 2*time.Second},     // waits 2s
+	}
+	for _, tc := range cases {
+		c := defaultConfig()
+		c.ASRTimeout = tc.timeout
+		c.ASRRetries = tc.retries
+		if got := asrTotalTimeout(c); got != tc.want {
+			t.Errorf("asrTotalTimeout(timeout=%d, retries=%d) = %v, want %v",
+				tc.timeout, tc.retries, got, tc.want)
+		}
 	}
 }
 
