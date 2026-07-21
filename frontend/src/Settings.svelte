@@ -15,6 +15,15 @@
   let saveMsg: string = $state('')
   let saveError: string = $state('')
 
+  // Tooltip for the "Off" checkbox next to the hotkey capture button.
+  const hotkeyOffTooltip =
+    'Switch the in-app global hotkey off and delegate it to your desktop ' +
+    'environment instead: in your DE keyboard shortcut settings, bind a ' +
+    'shortcut to the command\n\n' +
+    '    whisper-go-ui --toggle-recording\n\n' +
+    'It toggles recording exactly like the hotkey. Keeping both active ' +
+    'would toggle twice per press.'
+
   onMount(async () => {
     cfg = await GetConfig()
     devices = (await ListInputDevices()) ?? []
@@ -28,7 +37,7 @@
   let capturing = $state(false)
 
   // While capturing, the pressed keys must reach neither the page (Ctrl+Q
-  // quit, typing into inputs) nor the browser defaults — swallow everything
+  // quit, typing into inputs) nor the browser defaults: swallow everything
   // in the capture phase; the backend observes the keys via XRecord anyway.
   function swallowKeys(e: KeyboardEvent) {
     e.preventDefault()
@@ -75,7 +84,7 @@
     let tags = []
     if (d.isPulse) tags.push('PulseAudio/PipeWire')
     if (d.isDefault) tags.push('system default')
-    const suffix = tags.length ? `  —  ${tags.join(', ')}` : ''
+    const suffix = tags.length ? `  -  ${tags.join(', ')}` : ''
     return `[${d.id}] ${d.name}${suffix}`
   }
 </script>
@@ -97,10 +106,20 @@
           <button type="button" class="capture" onclick={captureHotkey} disabled={capturing}>
             {capturing ? 'Press keys…' : 'Capture'}
           </button>
+          <label class="inline hotkey-off" title={hotkeyOffTooltip}>
+            <input type="checkbox" bind:checked={cfg.hotkeyDisabled} />
+            <span>Off</span>
+          </label>
         </div>
       </label>
+      {#if cfg.hotkeyDisabled}
+        <p class="hint">
+          In-app hotkey is off: bind a shortcut in your DE to
+          <code>whisper-go-ui --toggle-recording</code> instead (hover "Off" for details).
+        </p>
+      {/if}
       {#if capturing}
-        <p class="hint">Press the key combo now — Esc cancels.</p>
+        <p class="hint">Press the key combo now, Esc cancels.</p>
       {/if}
       {#if hotkeyError}
         <p class="field-error">{hotkeyError}</p>
@@ -316,6 +335,25 @@
 
   .hotkey-row input {
     flex: 1;
+  }
+
+  .hotkey-row .hotkey-off {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+
+  .hotkey-row .hotkey-off input {
+    flex: none;
+  }
+
+  .hint code {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 11px;
   }
 
   .capture {

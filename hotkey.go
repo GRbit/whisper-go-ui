@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	hook "github.com/robotn/gohook"
@@ -45,7 +46,7 @@ var keyRawcodes = map[string][]uint16{
 	"left":      {65361},
 	"right":     {65363},
 
-	// Letters — X11 keysyms match ASCII, but gohook reports the keysym
+	// Letters: X11 keysyms match ASCII, but gohook reports the keysym
 	// computed with the live modifier state: uppercase when shift is held,
 	// lowercase otherwise (and inverted under caps lock). List both so
 	// combos work with and without shift.
@@ -221,7 +222,7 @@ func validKeyNames() string {
 // ── global listener ───────────────────────────────────────────────────────────
 
 // HotkeyListener runs one gohook event loop for the process lifetime.
-// gohook observes keys passively via XRecord — nothing is grabbed, so the
+// gohook observes keys passively via XRecord: nothing is grabbed, so the
 // combo can be hot-swapped without restarting the loop and registration can
 // never fail or conflict with other applications.
 type HotkeyListener struct {
@@ -229,10 +230,21 @@ type HotkeyListener struct {
 	combo   *ParsedHotkey
 	fire    func()      // called once per combo press (toggle semantics)
 	capture chan string // non-nil while a combo capture is in progress
+
+	// disabled suppresses fire() while the user delegates the hotkey to a
+	// desktop environment shortcut. The gohook loop keeps running: restarting
+	// gohook is unreliable, and the Capture button still needs the stream.
+	disabled atomic.Bool
 }
 
 func NewHotkeyListener(combo *ParsedHotkey, fire func()) *HotkeyListener {
 	return &HotkeyListener{combo: combo, fire: fire}
+}
+
+// SetDisabled turns combo firing off/on; takes effect on the next key event.
+func (h *HotkeyListener) SetDisabled(disabled bool) {
+	h.disabled.Store(disabled)
+	slog.Info("[HOTKEY] In-app hotkey toggled", "disabled", disabled)
 }
 
 // SetCombo swaps the active hotkey combo; takes effect on the next key event.
@@ -340,6 +352,10 @@ func (h *HotkeyListener) Run() {
 
 			if !isRepeat && hk.isTriggered(pressed) && !comboFired {
 				comboFired = true
+				if h.disabled.Load() {
+					slog.Debug("[HOTKEY] Combo pressed but the in-app hotkey is off (delegated to DE)")
+					continue
+				}
 				slog.Info("[HOTKEY] Combo activated", "combo", hk.String())
 				h.fire()
 			}

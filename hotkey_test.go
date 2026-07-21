@@ -33,7 +33,7 @@ func TestIsTriggered(t *testing.T) {
 		t.Error("nothing pressed must not trigger")
 	}
 
-	// Left ctrl + right shift + r — either L/R modifier variant counts.
+	// Left ctrl + right shift + r: either L/R modifier variant counts.
 	pressed[65507] = true // ctrl L
 	pressed[65506] = true // shift R
 	if hk.isTriggered(pressed) {
@@ -57,7 +57,7 @@ func TestIsTriggeredShiftlessLetterCombo(t *testing.T) {
 
 	pressed := map[uint16]bool{
 		65515: true, // Super_L (win)
-		114:   true, // XK_r — lowercase, no shift held
+		114:   true, // XK_r: lowercase, no shift held
 	}
 	if !hk.isTriggered(pressed) {
 		t.Error("win + lowercase r keysym must trigger")
@@ -139,7 +139,7 @@ func TestCaptureCombo(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got, ok := captureCombo(tc.pressed, tc.rc)
 			if ok != tc.wantOK || got != tc.want {
-				t.Errorf("captureCombo = %q, %v — want %q, %v", got, ok, tc.want, tc.wantOK)
+				t.Errorf("captureCombo = %q, %v, want %q, %v", got, ok, tc.want, tc.wantOK)
 			}
 		})
 	}

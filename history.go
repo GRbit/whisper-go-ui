@@ -72,9 +72,9 @@ func (s *HistoryStore) SetMode(mode string) {
 			merged = merged[len(merged)-maxHistoryEntries:]
 		}
 		s.entries = merged
-		slog.Info("[HIST] Disk mode on — new entries append to the file", "shown", len(s.entries), "path", s.path)
+		slog.Info("[HIST] Disk mode on: new entries append to the file", "shown", len(s.entries), "path", s.path)
 	} else {
-		slog.Info("[HIST] RAM mode on — file kept as-is, no further appends")
+		slog.Info("[HIST] RAM mode on: file kept as-is, no further appends")
 	}
 }
 

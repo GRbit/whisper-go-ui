@@ -30,6 +30,7 @@ export namespace main {
 	    asrRetries: number;
 	    hotkey: string;
 	    hotkeyMode: string;
+	    hotkeyDisabled: boolean;
 	    deviceId: number;
 	    debug: boolean;
 	    authHeaderName: string;
@@ -53,6 +54,7 @@ export namespace main {
 	        this.asrRetries = source["asrRetries"];
 	        this.hotkey = source["hotkey"];
 	        this.hotkeyMode = source["hotkeyMode"];
+	        this.hotkeyDisabled = source["hotkeyDisabled"];
 	        this.deviceId = source["deviceId"];
 	        this.debug = source["debug"];
 	        this.authHeaderName = source["authHeaderName"];

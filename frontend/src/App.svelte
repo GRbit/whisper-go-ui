@@ -2,12 +2,14 @@
   import { onMount, tick } from 'svelte'
   import Settings from './Settings.svelte'
   import History from './History.svelte'
+  import InfoModal from './InfoModal.svelte'
   import { GetConfig, GetState, ToggleRecording } from '../wailsjs/go/main/App.js'
   import { EventsOn, EventsEmit, Quit } from '../wailsjs/runtime/runtime.js'
 
   let tab: 'settings' | 'history' = $state('settings')
   let appState: string = $state('waiting')
   let lastError: string = $state('')
+  let infoModal: 'help' | 'credits' | null = $state(null)
 
   // Both tabs render inside the same scrollable <main>, so its scrollTop
   // survives tab switches: a scrolled-down Settings leaves History's short
@@ -39,13 +41,16 @@
       if (s === 'recording') lastError = ''
     })
     EventsOn('pipeline:error', (msg: string) => (lastError = msg))
+    // Window-menu items (Help > How to run / Credits) open modals via events.
+    EventsOn('menu:help', () => (infoModal = 'help'))
+    EventsOn('menu:credits', () => (infoModal = 'credits'))
     // Keep the backend's window-visibility flag (used by the tray left-click
-    // toggle) in sync — fires when the window is hidden via the close button,
+    // toggle) in sync: fires when the window is hidden via the close button,
     // minimize, or WindowHide.
     document.addEventListener('visibilitychange', () =>
       EventsEmit('window:visibility', document.visibilityState === 'visible'),
     )
-    // Ctrl+Q in the window (not global) quits the app for real — unlike the
+    // Ctrl+Q in the window (not global) quits the app for real, unlike the
     // close button, which only hides to tray.
     window.addEventListener('keydown', (e) => {
       if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'q') {
@@ -87,6 +92,8 @@
     <History />
   </div>
 </main>
+
+<InfoModal mode={infoModal} onclose={() => (infoModal = null)} />
 
 <style>
   header {

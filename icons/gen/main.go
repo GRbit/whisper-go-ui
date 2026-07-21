@@ -1,7 +1,7 @@
 // Command gen writes the app icon PNGs used outside the binary: the hicolor
 // icon-theme set (build/icons/<size>.png, installed by `make install`) and
 // build/appicon.png (wails packaging). The running app renders its own icons
-// in memory via the icons package — these files are build artifacts only.
+// in memory via the icons package: these files are build artifacts only.
 package main
 
 import (

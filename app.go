@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/gordonklaus/portaudio"
+	"github.com/wailsapp/wails/v2/pkg/menu"
+	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"log/slog"
 )
@@ -28,6 +30,10 @@ type App struct {
 	// the frontend confirms via "window:visibility" page-visibility events,
 	// which also covers the window close button and minimize.
 	winVisible atomic.Bool
+
+	// toggleOnLaunch is set when --toggle-recording was passed on the command
+	// line of a fresh start; startup begins recording once the pipeline is up.
+	toggleOnLaunch bool
 }
 
 func NewApp() *App {
@@ -66,10 +72,11 @@ func (a *App) startup(ctx context.Context) {
 	combo, err := parseHotkey(cfg.HotkeyStr)
 	if err != nil {
 		// Config was validated on save, but guard against a hand-edited file.
-		slog.Warn("[INIT] Invalid hotkey — falling back to ctrl+shift+r", "hotkey", cfg.HotkeyStr, "error", err)
+		slog.Warn("[INIT] Invalid hotkey: falling back to ctrl+shift+r", "hotkey", cfg.HotkeyStr, "error", err)
 		combo, _ = parseHotkey("ctrl+shift+r")
 	}
 	a.hotkey = NewHotkeyListener(combo, a.pipeline.Toggle)
+	a.hotkey.SetDisabled(cfg.HotkeyDisabled)
 	go a.hotkey.Run()
 
 	runtime.EventsOn(ctx, "window:visibility", func(args ...interface{}) {
@@ -85,6 +92,48 @@ func (a *App) startup(ctx context.Context) {
 		a.showWindow,
 		func() { runtime.Quit(a.ctx) },
 	)
+
+	if a.toggleOnLaunch {
+		slog.Info("[INIT] --toggle-recording on launch: starting recording")
+		a.pipeline.Toggle()
+	}
+}
+
+// onSecondInstance handles a repeated `whisper-go-ui` launch
+// (SingleInstanceLock). With --toggle-recording it toggles the pipeline
+// exactly like the global hotkey, without raising the window, so a DE
+// keyboard shortcut bound to that command behaves like the hotkey; a plain
+// launch brings the existing window to the front.
+func (a *App) onSecondInstance(data options.SecondInstanceData) {
+	opts := parseArgs(data.Args)
+	slog.Info("[APP] Second instance launch", "args", data.Args)
+	if opts.toggleRecording {
+		a.pipeline.Toggle()
+		return
+	}
+	a.showWindow()
+}
+
+// appMenu builds the window menu bar: a single Help menu with usage
+// instructions, credits, and Quit at the bottom. The help and credits items
+// open frontend modals via events.
+func (a *App) appMenu() *menu.Menu {
+	root := menu.NewMenu()
+	helpMenu := root.AddSubmenu("Help")
+	helpMenu.AddText("How to run", nil, func(_ *menu.CallbackData) {
+		slog.Debug("[APP] Menu: help opened")
+		runtime.EventsEmit(a.ctx, "menu:help")
+	})
+	helpMenu.AddText("Credits", nil, func(_ *menu.CallbackData) {
+		slog.Debug("[APP] Menu: credits opened")
+		runtime.EventsEmit(a.ctx, "menu:credits")
+	})
+	helpMenu.AddSeparator()
+	helpMenu.AddText("Quit", nil, func(_ *menu.CallbackData) {
+		slog.Info("[APP] Quit requested from window menu")
+		runtime.Quit(a.ctx)
+	})
+	return root
 }
 
 // showWindow makes the window visible and records that.
@@ -143,6 +192,9 @@ func (a *App) SaveConfig(c Config) error {
 		}
 		a.hotkey.SetCombo(combo)
 	}
+	if c.HotkeyDisabled != old.HotkeyDisabled {
+		a.hotkey.SetDisabled(c.HotkeyDisabled)
+	}
 	if c.HistoryMode != old.HistoryMode {
 		a.history.SetMode(c.HistoryMode)
 		// A mode switch can change the visible list (disk entries merge
@@ -156,7 +208,7 @@ func (a *App) SaveConfig(c Config) error {
 // the list of valid key names.
 func (a *App) ValidateHotkey(s string) string {
 	if _, err := parseHotkey(s); err != nil {
-		return fmt.Sprintf("%v — valid keys: %s", err, validKeyNames())
+		return fmt.Sprintf("%v - valid keys: %s", err, validKeyNames())
 	}
 	return ""
 }

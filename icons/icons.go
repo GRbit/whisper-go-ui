@@ -1,5 +1,5 @@
 // Package icons renders the application's icons (tray states and the app
-// icon) at runtime from simple shape descriptions — no image files are
+// icon) at runtime from simple shape descriptions: no image files are
 // committed or embedded. The gen subcommand writes PNGs to build/ for
 // desktop integration and packaging; it runs as a wails pre-build hook.
 package icons

@@ -41,6 +41,11 @@ type Config struct {
 	ASRRetries int    `json:"asrRetries"`
 	HotkeyStr  string `json:"hotkey"`
 	HotkeyMode string `json:"hotkeyMode"` // legacy; the app is toggle-only now
+	// HotkeyDisabled switches the in-app global hotkey off so a desktop
+	// environment shortcut bound to `whisper-go-ui --toggle-recording` can
+	// own the combo instead (both active would toggle twice per press).
+	// Absent in older configs -> false -> hotkey stays active.
+	HotkeyDisabled bool `json:"hotkeyDisabled"`
 	DeviceID   int    `json:"deviceId"`   // requested PortAudio device (-1 = auto)
 	Debug      bool   `json:"debug"`
 
@@ -129,7 +134,7 @@ func loadConfig() (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			slog.Debug("[CFG] No config file — using defaults", "path", path)
+			slog.Debug("[CFG] No config file: using defaults", "path", path)
 			return c, nil
 		}
 		return c, fmt.Errorf("read config %s: %w", path, err)

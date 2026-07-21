@@ -21,7 +21,7 @@ const (
 	StateIdle       State = iota // waiting for the hotkey
 	StateRecording               // capturing audio
 	StateProcessing              // ASR request in flight
-	StatePasted                  // paste done — cosmetic, reverts to Idle after 2s
+	StatePasted                  // paste done: cosmetic, reverts to Idle after 2s
 )
 
 func (s State) String() string {
@@ -117,7 +117,7 @@ func (p *Pipeline) Toggle() {
 	case StateRecording:
 		p.stopRecording()
 	case StateProcessing:
-		slog.Info("[ACTION] Hotkey ignored — ASR processing in progress")
+		slog.Info("[ACTION] Hotkey ignored: ASR processing in progress")
 	}
 }
 
@@ -138,7 +138,7 @@ func (p *Pipeline) startRecording() {
 		host, err := portaudio.DefaultHostApi()
 		if err != nil || host == nil || host.DefaultInputDevice == nil {
 			p.mu.Unlock()
-			slog.Error("[REC] No usable audio input device — cannot record")
+			slog.Error("[REC] No usable audio input device: cannot record")
 			p.emitError(fmt.Errorf("no usable audio input device"))
 			return
 		}
@@ -199,7 +199,7 @@ func (p *Pipeline) processRecording(rec *Recorder) {
 	defer os.Remove(wavPath)
 
 	if audioDur < 250*time.Millisecond {
-		slog.Info("[PROC] Recording too short — skipping ASR", "duration", audioDur, "minimum", 250*time.Millisecond)
+		slog.Info("[PROC] Recording too short: skipping ASR", "duration", audioDur, "minimum", 250*time.Millisecond)
 		finish(nil)
 		return
 	}
@@ -239,7 +239,7 @@ func (p *Pipeline) processRecording(rec *Recorder) {
 	case cfg.CopyToClipboard:
 		slog.Info("[PROC] Copied to clipboard (auto-paste off)", "chars", len(transcript))
 	default:
-		slog.Info("[PROC] Recognized (delivery disabled — history only)", "chars", len(transcript))
+		slog.Info("[PROC] Recognized (delivery disabled, history only)", "chars", len(transcript))
 	}
 
 	entry := HistoryEntry{Time: time.Now(), Text: transcript, DurationSec: audioDur.Seconds()}

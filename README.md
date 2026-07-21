@@ -26,6 +26,29 @@ server → paste the transcript into the focused window (clipboard + Ctrl+V).
 - **Transcription history**: RAM-only (default) or persisted to
   `~/.local/share/whisper-go-ui/history.jsonl`, capped at 200 entries.
 - Window closes to tray; single-instance (second launch focuses the window).
+- Window Help menu with usage instructions, credits, and Quit.
+
+## Command line
+
+Only one copy of the app runs at a time (single-instance lock):
+
+```
+whisper-go-ui                     start, or bring the running window to the front
+whisper-go-ui --toggle-recording  toggle recording exactly like the hotkey:
+                                  first call starts, the next stops and
+                                  copies/pastes the transcript; starts the app
+                                  recording if it is not running yet
+whisper-go-ui --help              print this help
+```
+
+### Hotkey via your DE instead of the built-in one
+
+The built-in hotkey observes the keyboard globally (gohook/XRecord). If you
+prefer your desktop environment to own the shortcut, tick "Off" next to the
+hotkey in Settings and bind a keyboard shortcut in your DE's keyboard
+settings to `whisper-go-ui --toggle-recording`. Keeping both active would
+toggle twice per press, which is why the checkbox suppresses the in-app
+hotkey.
 
 ## Configuration
 

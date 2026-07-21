@@ -73,7 +73,7 @@ func pickDevice(devices []*portaudio.DeviceInfo, deviceID int) int {
 			slog.Info("[DEV] Using configured device", "id", deviceID, "name", devices[deviceID].Name)
 			return deviceID
 		}
-		slog.Warn("[DEV] Configured device invalid (out of range or no input) — falling back", "id", deviceID)
+		slog.Warn("[DEV] Configured device invalid (out of range or no input): falling back", "id", deviceID)
 	}
 
 	if pulse := findPulseDevice(devices); pulse >= 0 {
@@ -81,6 +81,6 @@ func pickDevice(devices []*portaudio.DeviceInfo, deviceID int) int {
 		return pulse
 	}
 
-	slog.Info("[DEV] No preferred device found — will use PortAudio default")
+	slog.Info("[DEV] No preferred device found: will use PortAudio default")
 	return -1
 }

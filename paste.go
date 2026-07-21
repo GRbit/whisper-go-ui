@@ -30,11 +30,11 @@ var (
 func deliverText(text string, c *Config) (bool, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		slog.Debug("[PASTE] Nothing to deliver — text is empty after TrimSpace")
+		slog.Debug("[PASTE] Nothing to deliver: text is empty after TrimSpace")
 		return false, nil
 	}
 	if !c.CopyToClipboard && !c.AutoPaste {
-		slog.Debug("[PASTE] Clipboard and auto-paste both disabled — text goes to history only")
+		slog.Debug("[PASTE] Clipboard and auto-paste both disabled: text goes to history only")
 		return false, nil
 	}
 
@@ -83,7 +83,7 @@ func deliverText(text string, c *Config) (bool, error) {
 		return false, fmt.Errorf("paste keystroke: %w (text left in clipboard)", tapErr)
 	}
 
-	// Small post-paste delay — lets the receiving app process the event
+	// Small post-paste delay: lets the receiving app process the event
 	// before we potentially do anything else.
 	time.Sleep(50 * time.Millisecond)
 	slog.Debug("[PASTE] Paste keystroke sent", "combo", c.PasteCombo)
@@ -92,7 +92,7 @@ func deliverText(text string, c *Config) (bool, error) {
 	if !c.CopyToClipboard && prevOK {
 		// The receiving app reads the clipboard while handling the paste
 		// keystroke; wait long enough for slow apps before overwriting.
-		// Only text is restored — non-text clipboard content is lost.
+		// Only text is restored: non-text clipboard content is lost.
 		time.Sleep(300 * time.Millisecond)
 		if err := clipboardWrite(prev); err != nil {
 			slog.Warn("[PASTE] Restoring previous clipboard text failed", "error", err)

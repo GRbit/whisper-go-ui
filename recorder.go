@@ -13,7 +13,7 @@ import (
 
 // Audio constants shared with the rest of the package.
 const (
-	whisperSampleRate = 16000 // Hz — Whisper's native rate
+	whisperSampleRate = 16000 // Hz, Whisper's native rate
 	channels          = 1     // mono
 	framesPerBuffer   = 2048  // ~46ms at 44100 Hz; ~128ms at 16000 Hz
 )
@@ -43,7 +43,7 @@ func NewRecorder(device *portaudio.DeviceInfo) *Recorder {
 // Start launches the capture goroutine.
 // Call Stop() to signal it to finish, then Wait() to get the WAV path.
 func (r *Recorder) Start() {
-	slog.Debug("[REC] Start() — launching capture goroutine")
+	slog.Debug("[REC] Start(): launching capture goroutine")
 	go func() {
 		path, dur, err := r.capture()
 		slog.Debug("[REC] Capture goroutine finished", "path", path, "duration", dur, "error", err)
@@ -57,7 +57,7 @@ func (r *Recorder) Stop() {
 	case <-r.stopCh:
 		slog.Debug("[REC] Stop() called but stopCh already closed (idempotent)")
 	default:
-		slog.Debug("[REC] Stop() closing stopCh — capture loop will exit after current Read()")
+		slog.Debug("[REC] Stop() closing stopCh: capture loop will exit after current Read()")
 		close(r.stopCh)
 	}
 }
@@ -122,7 +122,7 @@ func (r *Recorder) capture() (string, time.Duration, error) {
 	)
 	startWall := time.Now()
 
-	// Periodic progress ticker — fires every 2 s
+	// Periodic progress ticker: fires every 2 s
 	progressTicker := time.NewTicker(2 * time.Second)
 	defer progressTicker.Stop()
 
@@ -151,9 +151,9 @@ captureLoop:
 		default:
 		}
 
-		// ── Blocking read — returns after framesPerBuffer frames ───
+		// ── Blocking read: returns after framesPerBuffer frames ───
 		if err := stream.Read(); err != nil {
-			slog.Error("[REC] stream.Read() failed — stopping capture", "error", err)
+			slog.Error("[REC] stream.Read() failed: stopping capture", "error", err)
 			break captureLoop
 		}
 		frameCount++

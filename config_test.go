@@ -54,6 +54,40 @@ func TestLoadConfigLegacySchema(t *testing.T) {
 		t.Errorf("paste behaviour should default to copy+paste with ctrl+v, got copy=%v paste=%v combo=%q",
 			c.CopyToClipboard, c.AutoPaste, c.PasteCombo)
 	}
+	if c.HotkeyDisabled {
+		t.Error("HotkeyDisabled should default to false (hotkey active) for configs without the field")
+	}
+}
+
+// TestConfigHotkeyDisabledRoundTrip guards the DE-delegation switch: a saved
+// hotkeyDisabled=true must survive a save/load cycle, and parseArgs must
+// recognize the CLI flag a DE shortcut would use instead of the hotkey.
+func TestConfigHotkeyDisabledRoundTrip(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	c := defaultConfig()
+	c.HotkeyDisabled = true
+	if err := saveConfig(c); err != nil {
+		t.Fatalf("saveConfig: %v", err)
+	}
+	loaded, err := loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if !loaded.HotkeyDisabled {
+		t.Error("HotkeyDisabled = false after round trip, want true")
+	}
+
+	got := parseArgs([]string{"--toggle-recording"})
+	if !got.toggleRecording {
+		t.Error("parseArgs should recognize --toggle-recording")
+	}
+	if got.help {
+		t.Error("parseArgs found help in --toggle-recording")
+	}
+	if !parseArgs([]string{"-h"}).help {
+		t.Error("parseArgs should recognize -h")
+	}
 }
 
 func TestLoadConfigMissingFile(t *testing.T) {

@@ -34,7 +34,7 @@ func (t *Tray) Start(onToggle, onShow, onQuit func()) {
 	systray.SetOnTapped(onToggle)
 	go systray.Run(func() {
 		systray.SetIcon(icons.Waiting)
-		systray.SetTooltip("Whisper Transcriber — waiting")
+		systray.SetTooltip("Whisper Transcriber: waiting")
 
 		mShow := systray.AddMenuItem("Show window", "Open settings and history")
 		systray.AddSeparator()
@@ -74,7 +74,7 @@ func (t *Tray) SetState(s State) {
 		return
 	}
 	systray.SetIcon(iconFor(s))
-	systray.SetTooltip("Whisper Transcriber — " + s.String())
+	systray.SetTooltip("Whisper Transcriber: " + s.String())
 }
 
 func iconFor(s State) []byte {
