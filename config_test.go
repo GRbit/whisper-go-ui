@@ -155,6 +155,13 @@ func TestConfigValidate(t *testing.T) {
 		{"bad theme", func(c *Config) { c.Theme = "solarized" }, false},
 		{"control+v forbidden", func(c *Config) { c.HotkeyStr = "control+v" }, false},
 		{"ctrl+shift+v forbidden", func(c *Config) { c.HotkeyStr = "ctrl+shift+v" }, false},
+		// The synthetic paste holds ctrl(+shift)+v, so any combo made purely
+		// of those keys fires off the app's own paste (feedback loop).
+		{"v+ctrl forbidden", func(c *Config) { c.HotkeyStr = "v+ctrl" }, false},
+		{"bare v forbidden", func(c *Config) { c.HotkeyStr = "v" }, false},
+		{"shift+v forbidden", func(c *Config) { c.HotkeyStr = "shift+v" }, false},
+		{"v+shift+control forbidden", func(c *Config) { c.HotkeyStr = "v+shift+control" }, false},
+		{"ctrl+alt+v ok", func(c *Config) { c.HotkeyStr = "ctrl+alt+v" }, true},
 		{"paste combo ctrl+shift+v ok", func(c *Config) { c.PasteCombo = PasteCtrlShiftV }, true},
 		{"bad paste combo", func(c *Config) { c.PasteCombo = "middle-click" }, false},
 		{"delivery fully off ok", func(c *Config) { c.CopyToClipboard = false; c.AutoPaste = false }, true},

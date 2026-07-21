@@ -89,7 +89,16 @@ var rawcodeKeyName = map[uint16]string{}
 
 const escapeRawcode = 65307
 
+// pasteRawcodes is the set of rawcodes held down while the app sends its
+// synthetic paste keystroke (ctrl+v or ctrl+shift+v).
+var pasteRawcodes = map[uint16]bool{}
+
 func init() {
+	for _, name := range []string{"ctrl", "shift", "v"} {
+		for _, c := range keyRawcodes[name] {
+			pasteRawcodes[c] = true
+		}
+	}
 	for _, m := range modifierOrder {
 		for _, c := range m.codes {
 			modifierCodes[c] = true
@@ -186,6 +195,22 @@ func (hk *ParsedHotkey) isTriggered(pressed map[uint16]bool) bool {
 		}
 	}
 	return len(hk.keys) > 0
+}
+
+// conflictsWithPaste reports whether every key of the combo belongs to the
+// set held by the app's synthetic paste keystroke (ctrl, shift, v). Such a
+// combo is triggered by the paste itself: paste -> hotkey -> record loop.
+// Checking rawcodes instead of the combo string also catches aliases and
+// reordered forms like "control+v", "v+ctrl" or a bare "v".
+func (hk *ParsedHotkey) conflictsWithPaste() bool {
+	for _, k := range hk.keys {
+		for _, rc := range k.rawcodes {
+			if !pasteRawcodes[rc] {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // isAnyKey returns true if rawcode belongs to any key in the combo.

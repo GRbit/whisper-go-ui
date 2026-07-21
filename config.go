@@ -217,10 +217,9 @@ func (c *Config) validate() error {
 	if err != nil {
 		return fmt.Errorf("invalid hotkey %q: %w", c.HotkeyStr, err)
 	}
-	// The paste step sends a synthetic Ctrl+V or Ctrl+Shift+V; using one of
-	// those as the hotkey would re-trigger the pipeline from its own paste.
-	switch hk.String() {
-	case "ctrl+v", "control+v", "ctrl+shift+v", "control+shift+v":
+	// The paste step sends a synthetic Ctrl+V or Ctrl+Shift+V; a hotkey made
+	// only of those keys would re-trigger the pipeline from its own paste.
+	if hk.conflictsWithPaste() {
 		return fmt.Errorf("%s cannot be used as the hotkey (it is a paste keystroke)", hk)
 	}
 	if c.AuthHeaderName == "" && c.AuthHeaderValue != "" {
