@@ -36,13 +36,21 @@ type App struct {
 	toggleOnLaunch bool
 }
 
+// NewApp constructs the app with every component the frontend's bound
+// methods touch. Wails binds methods before startup() runs and the frontend
+// calls GetConfig/GetState/GetHistory as soon as it loads, so anything that
+// does not need the Wails context must exist here, not in startup().
 func NewApp() *App {
 	a := &App{cfg: &configStore{}}
+	a.cfg.Set(defaultConfig())
+	a.history = NewHistoryStore(defaultConfig().HistoryMode)
+	a.tray = NewTray()
+	a.pipeline = NewPipeline(a.cfg, a.history, a.tray)
 	a.winVisible.Store(true) // the window starts visible
 	return a
 }
 
-// startup wires everything together once Wails hands us the context.
+// startup wires the ctx-dependent parts together once Wails hands us the context.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
@@ -64,9 +72,7 @@ func (a *App) startup(ctx context.Context) {
 	}
 	slog.Info("[INIT] PortAudio devices found", "count", len(a.devices))
 
-	a.history = NewHistoryStore(cfg.HistoryMode)
-	a.tray = NewTray()
-	a.pipeline = NewPipeline(a.cfg, a.history, a.tray)
+	a.history.SetMode(cfg.HistoryMode)
 	a.pipeline.Start(ctx, a.devices)
 
 	combo, err := parseHotkey(cfg.HotkeyStr)
@@ -185,14 +191,16 @@ func (a *App) SaveConfig(c Config) error {
 		logLevel.Set(slog.LevelInfo)
 	}
 
-	if c.HotkeyStr != old.HotkeyStr {
+	// a.hotkey is nil until startup() finishes; the saved file is picked up
+	// there, so skipping the live re-apply is safe.
+	if a.hotkey != nil && c.HotkeyStr != old.HotkeyStr {
 		combo, err := parseHotkey(c.HotkeyStr)
 		if err != nil {
 			return err // unreachable: validate() already parsed it
 		}
 		a.hotkey.SetCombo(combo)
 	}
-	if c.HotkeyDisabled != old.HotkeyDisabled {
+	if a.hotkey != nil && c.HotkeyDisabled != old.HotkeyDisabled {
 		a.hotkey.SetDisabled(c.HotkeyDisabled)
 	}
 	if c.HistoryMode != old.HistoryMode {
