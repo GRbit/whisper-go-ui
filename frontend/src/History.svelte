@@ -9,7 +9,10 @@
 
   onMount(() => {
     load()
-    EventsOn('history:added', () => load())
+    // The component remounts on every tab switch; returning the EventsOn
+    // unsubscribe function lets Svelte drop the listener on unmount,
+    // otherwise 'history:added' handlers accumulate forever.
+    return EventsOn('history:added', () => load())
   })
 
   async function load() {
