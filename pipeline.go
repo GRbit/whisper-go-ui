@@ -85,6 +85,12 @@ func (p *Pipeline) setState(s State) {
 	ctx := p.ctx
 	p.mu.Unlock()
 
+	p.announceState(old, s, ctx)
+}
+
+// announceState logs a transition and mirrors it to the tray and frontend.
+// Called outside the lock: tray and EventsEmit must not run under p.mu.
+func (p *Pipeline) announceState(old, s State, ctx context.Context) {
 	if old != s {
 		slog.Info("[STATE] Transition", "from", old.String(), "to", s.String())
 	}
@@ -92,6 +98,25 @@ func (p *Pipeline) setState(s State) {
 	if ctx != nil {
 		runtime.EventsEmit(ctx, "state:changed", s.String())
 	}
+}
+
+// expirePasted reverts Pasted to Idle when the 2s display timer fires,
+// unless a newer recording took the state over. The generation check and
+// the transition happen under one lock acquisition: startRecording bumps
+// pastedGen and sets Recording under the same lock, so a recording started
+// between check and set can no longer be clobbered back to Idle.
+func (p *Pipeline) expirePasted(gen uint64) {
+	p.mu.Lock()
+	if p.pastedGen.Load() != gen || p.state != StatePasted {
+		p.mu.Unlock()
+		slog.Debug("[STATE] Pasted display timer expired stale: ignoring")
+		return
+	}
+	p.state = StateIdle
+	ctx := p.ctx
+	p.mu.Unlock()
+
+	p.announceState(StatePasted, StateIdle, ctx)
 }
 
 // emitError surfaces a pipeline error to the frontend.
@@ -267,11 +292,7 @@ func (p *Pipeline) processRecording(rec *Recorder) {
 	// Show the "pasted" state for 2s, unless a new recording takes over.
 	p.setState(StatePasted)
 	gen := p.pastedGen.Add(1)
-	time.AfterFunc(pastedDisplayTime, func() {
-		if p.pastedGen.Load() == gen && p.State() == StatePasted {
-			p.setState(StateIdle)
-		}
-	})
+	time.AfterFunc(pastedDisplayTime, func() { p.expirePasted(gen) })
 }
 
 // StopActiveRecorder aborts a recording in progress (used at shutdown).
