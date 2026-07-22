@@ -151,6 +151,8 @@ func TestConfigValidate(t *testing.T) {
 		{"timeout too big", func(c *Config) { c.ASRTimeout = 601 }, false},
 		{"retries zero", func(c *Config) { c.ASRRetries = 0 }, false},
 		{"bad history mode", func(c *Config) { c.HistoryMode = "cloud" }, false},
+		{"history limit zero ok", func(c *Config) { c.HistoryLimit = 0 }, true},
+		{"history limit negative", func(c *Config) { c.HistoryLimit = -1 }, false},
 		{"light theme ok", func(c *Config) { c.Theme = ThemeLight }, true},
 		{"bad theme", func(c *Config) { c.Theme = "solarized" }, false},
 		{"control+v forbidden", func(c *Config) { c.HotkeyStr = "control+v" }, false},

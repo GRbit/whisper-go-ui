@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,10 +31,11 @@ type HistoryStore struct {
 	entries []HistoryEntry
 	disk    bool
 	path    string // JSONL file path; empty if data dir is unavailable
+	limit   int    // max entries kept in the JSONL file; 0 = no limit
 }
 
-func NewHistoryStore(mode string) *HistoryStore {
-	s := &HistoryStore{}
+func NewHistoryStore(mode string, limit int) *HistoryStore {
+	s := &HistoryStore{limit: limit}
 	dir, err := dataDir()
 	if err != nil {
 		slog.Warn("[HIST] Data dir unavailable, disk mode disabled", "error", err)
@@ -42,6 +44,20 @@ func NewHistoryStore(mode string) *HistoryStore {
 	}
 	s.SetMode(mode)
 	return s
+}
+
+// SetLimit changes the on-disk entry cap (0 = no limit) and compacts the
+// file right away so a lowered limit takes effect without waiting for the
+// next transcription.
+func (s *HistoryStore) SetLimit(limit int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if limit == s.limit {
+		return
+	}
+	s.limit = limit
+	slog.Info("[HIST] History file limit changed", "limit", limit)
+	s.compactFileLocked()
 }
 
 // SetMode switches between RAM and disk persistence. Switching to disk
@@ -102,6 +118,7 @@ func (s *HistoryStore) Add(e HistoryEntry) {
 		if err := s.appendFileLocked(e); err != nil {
 			slog.Error("[HIST] Append failed", "path", s.path, "error", err)
 		}
+		s.compactFileLocked()
 	}
 }
 
@@ -159,6 +176,42 @@ func (s *HistoryStore) loadFileLocked() []HistoryEntry {
 		entries = entries[len(entries)-maxHistoryEntries:]
 	}
 	return entries
+}
+
+// compactFileLocked truncates the JSONL file to its newest s.limit lines.
+// No-op with limit 0 (unlimited), no file, or a file within the limit.
+// The rewrite goes through a tmp file + rename so a crash mid-compaction
+// cannot lose the history.
+func (s *HistoryStore) compactFileLocked() {
+	if s.limit <= 0 || s.path == "" {
+		return
+	}
+	data, err := os.ReadFile(s.path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			slog.Warn("[HIST] Read for compaction failed", "path", s.path, "error", err)
+		}
+		return
+	}
+
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	if len(lines) <= s.limit || lines[0] == "" {
+		return
+	}
+	keep := lines[len(lines)-s.limit:]
+
+	tmp := s.path + ".tmp"
+	content := strings.Join(keep, "\n") + "\n"
+	if err := os.WriteFile(tmp, []byte(content), 0o600); err != nil {
+		slog.Warn("[HIST] Write for compaction failed", "path", tmp, "error", err)
+		return
+	}
+	if err := os.Rename(tmp, s.path); err != nil {
+		os.Remove(tmp)
+		slog.Warn("[HIST] Rename for compaction failed", "path", s.path, "error", err)
+		return
+	}
+	slog.Debug("[HIST] History file compacted", "dropped", len(lines)-s.limit, "kept", len(keep))
 }
 
 func (s *HistoryStore) appendFileLocked(e HistoryEntry) error {

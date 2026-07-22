@@ -187,6 +187,10 @@
           <span>Disk (~/.local/share/whisper-go-ui/history.jsonl)</span>
         </label>
       </div>
+      <label class="limit">
+        <span>Max entries kept in the history file (0 = unlimited)</span>
+        <input type="number" min="0" bind:value={cfg.historyLimit} />
+      </label>
     </section>
 
     <section>
@@ -364,6 +368,10 @@
   .device-row {
     display: flex;
     gap: 8px;
+  }
+
+  .limit input {
+    max-width: 160px;
   }
 
   .device-row select {

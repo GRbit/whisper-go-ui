@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +15,7 @@ func entry(text string) HistoryEntry {
 
 func TestHistoryRAMModeAddAndOrder(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
-	s := NewHistoryStore(HistoryRAM)
+	s := NewHistoryStore(HistoryRAM, 0)
 
 	s.Add(entry("first"))
 	s.Add(entry("second"))
@@ -35,7 +36,7 @@ func TestHistoryRAMModeAddAndOrder(t *testing.T) {
 
 func TestHistoryCap(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
-	s := NewHistoryStore(HistoryRAM)
+	s := NewHistoryStore(HistoryRAM, 0)
 	for i := 0; i < maxHistoryEntries+50; i++ {
 		s.Add(entry(strings.Repeat("x", 3)))
 	}
@@ -48,11 +49,11 @@ func TestHistoryDiskModePersistsAcrossRestart(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", dir)
 
-	s := NewHistoryStore(HistoryDisk)
+	s := NewHistoryStore(HistoryDisk, 0)
 	s.Add(entry("persisted"))
 
 	// Simulate app restart.
-	s2 := NewHistoryStore(HistoryDisk)
+	s2 := NewHistoryStore(HistoryDisk, 0)
 	all := s2.All()
 	if len(all) != 1 || all[0].Text != "persisted" {
 		t.Fatalf("restart lost history: %+v", all)
@@ -75,7 +76,7 @@ func TestHistoryDiskModeSavesOnlyNewEntries(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", dir)
 	file := filepath.Join(dir, "whisper-go-ui", "history.jsonl")
 
-	s := NewHistoryStore(HistoryRAM)
+	s := NewHistoryStore(HistoryRAM, 0)
 	s.Add(entry("before switch"))
 	s.SetMode(HistoryDisk)
 
@@ -90,7 +91,7 @@ func TestHistoryDiskModeSavesOnlyNewEntries(t *testing.T) {
 	if len(all) != 2 {
 		t.Fatalf("view must keep both entries, got %+v", all)
 	}
-	s2 := NewHistoryStore(HistoryDisk)
+	s2 := NewHistoryStore(HistoryDisk, 0)
 	persisted := s2.All()
 	if len(persisted) != 1 || persisted[0].Text != "after switch" {
 		t.Errorf("file must hold only the post-switch entry, got %+v", persisted)
@@ -104,7 +105,7 @@ func TestHistoryDiskRAMDiskRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", dir)
 
-	s := NewHistoryStore(HistoryDisk)
+	s := NewHistoryStore(HistoryDisk, 0)
 	s.Add(entry("on disk"))
 	s.SetMode(HistoryRAM)
 	s.Add(entry("ram only"))
@@ -119,7 +120,7 @@ func TestHistoryDiskRAMDiskRoundTrip(t *testing.T) {
 	}
 
 	s.Add(entry("new in disk mode"))
-	s2 := NewHistoryStore(HistoryDisk)
+	s2 := NewHistoryStore(HistoryDisk, 0)
 	persisted := s2.All()
 	if len(persisted) != 2 {
 		t.Fatalf("file must hold pre-existing + new entry only, got %+v", persisted)
@@ -129,11 +130,82 @@ func TestHistoryDiskRAMDiskRoundTrip(t *testing.T) {
 	}
 }
 
+// countFileLines returns the number of non-empty lines in the history file.
+func countFileLines(t *testing.T, dir string) int {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(dir, "whisper-go-ui", "history.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) != "" {
+			n++
+		}
+	}
+	return n
+}
+
+// TestHistoryDiskLimitCleanupOnWrite: with a limit set, appending past it
+// must truncate the file to the newest `limit` entries.
+func TestHistoryDiskLimitCleanupOnWrite(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+
+	s := NewHistoryStore(HistoryDisk, 5)
+	for i := 0; i < 8; i++ {
+		s.Add(entry(fmt.Sprintf("entry %d", i)))
+	}
+
+	if n := countFileLines(t, dir); n != 5 {
+		t.Errorf("file has %d lines, want 5 (limit)", n)
+	}
+
+	// The survivors must be the newest entries.
+	s2 := NewHistoryStore(HistoryDisk, 5)
+	all := s2.All()
+	if len(all) != 5 || all[0].Text != "entry 7" || all[4].Text != "entry 3" {
+		t.Errorf("wrong survivors after cleanup: %+v", all)
+	}
+}
+
+// TestHistoryDiskLimitZeroUnlimited: limit 0 must never truncate.
+func TestHistoryDiskLimitZeroUnlimited(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+
+	s := NewHistoryStore(HistoryDisk, 0)
+	for i := 0; i < 8; i++ {
+		s.Add(entry(fmt.Sprintf("entry %d", i)))
+	}
+	if n := countFileLines(t, dir); n != 8 {
+		t.Errorf("file has %d lines, want all 8 (no limit)", n)
+	}
+}
+
+// TestHistorySetLimitCompactsFile: lowering the limit compacts the file
+// right away, not only on the next append.
+func TestHistorySetLimitCompactsFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+
+	s := NewHistoryStore(HistoryDisk, 0)
+	for i := 0; i < 8; i++ {
+		s.Add(entry(fmt.Sprintf("entry %d", i)))
+	}
+
+	s.SetLimit(3)
+
+	if n := countFileLines(t, dir); n != 3 {
+		t.Errorf("file has %d lines after SetLimit(3), want 3", n)
+	}
+}
+
 func TestHistoryClearTruncatesFile(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", dir)
 
-	s := NewHistoryStore(HistoryDisk)
+	s := NewHistoryStore(HistoryDisk, 0)
 	s.Add(entry("bye"))
 	if err := s.Clear(); err != nil {
 		t.Fatal(err)
@@ -142,7 +214,7 @@ func TestHistoryClearTruncatesFile(t *testing.T) {
 		t.Error("RAM entries survive Clear")
 	}
 
-	s2 := NewHistoryStore(HistoryDisk)
+	s2 := NewHistoryStore(HistoryDisk, 0)
 	if n := len(s2.All()); n != 0 {
 		t.Errorf("file entries survive Clear: %d", n)
 	}
@@ -164,7 +236,7 @@ this is not json
 		t.Fatal(err)
 	}
 
-	s := NewHistoryStore(HistoryDisk)
+	s := NewHistoryStore(HistoryDisk, 0)
 	if n := len(s.All()); n != 2 {
 		t.Errorf("want 2 valid entries, got %d", n)
 	}

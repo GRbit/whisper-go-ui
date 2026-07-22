@@ -18,7 +18,7 @@ func newTestPipeline(t *testing.T) *Pipeline {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	cfg := &configStore{}
 	cfg.Set(defaultConfig())
-	return NewPipeline(cfg, NewHistoryStore(HistoryRAM), NewTray())
+	return NewPipeline(cfg, NewHistoryStore(HistoryRAM, 0), NewTray())
 }
 
 // TestStopRecordingKeepsProcessingState guards the double-press race: two

@@ -36,6 +36,7 @@ export namespace main {
 	    authHeaderName: string;
 	    authHeaderValue: string;
 	    historyMode: string;
+	    historyLimit: number;
 	    theme: string;
 	    copyToClipboard: boolean;
 	    autoPaste: boolean;
@@ -60,6 +61,7 @@ export namespace main {
 	        this.authHeaderName = source["authHeaderName"];
 	        this.authHeaderValue = source["authHeaderValue"];
 	        this.historyMode = source["historyMode"];
+	        this.historyLimit = source["historyLimit"];
 	        this.theme = source["theme"];
 	        this.copyToClipboard = source["copyToClipboard"];
 	        this.autoPaste = source["autoPaste"];

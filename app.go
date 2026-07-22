@@ -41,7 +41,7 @@ type App struct {
 func NewApp() *App {
 	a := &App{cfg: &configStore{}}
 	a.cfg.Set(defaultConfig())
-	a.history = NewHistoryStore(defaultConfig().HistoryMode)
+	a.history = NewHistoryStore(defaultConfig().HistoryMode, defaultConfig().HistoryLimit)
 	a.tray = NewTray()
 	a.pipeline = NewPipeline(a.cfg, a.history, a.tray)
 	a.winVisible.Store(true) // the window starts visible
@@ -70,6 +70,7 @@ func (a *App) startup(ctx context.Context) {
 	}
 	slog.Info("[INIT] PortAudio devices found", "count", len(devices))
 
+	a.history.SetLimit(cfg.HistoryLimit)
 	a.history.SetMode(cfg.HistoryMode)
 	a.pipeline.Start(ctx, devices)
 
@@ -200,6 +201,9 @@ func (a *App) SaveConfig(c Config) error {
 	}
 	if a.hotkey != nil && c.HotkeyDisabled != old.HotkeyDisabled {
 		a.hotkey.SetDisabled(c.HotkeyDisabled)
+	}
+	if c.HistoryLimit != old.HistoryLimit {
+		a.history.SetLimit(c.HistoryLimit)
 	}
 	if c.HistoryMode != old.HistoryMode {
 		a.history.SetMode(c.HistoryMode)

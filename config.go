@@ -52,7 +52,11 @@ type Config struct {
 	AuthHeaderName  string `json:"authHeaderName"`
 	AuthHeaderValue string `json:"authHeaderValue"`
 	HistoryMode     string `json:"historyMode"` // "ram" | "disk"
-	Theme           string `json:"theme"`       // "dark" | "light"
+	// HistoryLimit caps how many entries the on-disk history file keeps
+	// (cleanup happens on write). 0 means no limit. Legacy configs without
+	// the field get the default because loadConfig unmarshals over defaults.
+	HistoryLimit int    `json:"historyLimit"`
+	Theme        string `json:"theme"` // "dark" | "light"
 
 	// What to do with the recognized text. Auto-paste works through the
 	// clipboard; with CopyToClipboard off the previous clipboard text is
@@ -71,9 +75,10 @@ func defaultConfig() *Config {
 		ASRRetries:  3,
 		HotkeyStr:   "ctrl+shift+r",
 		HotkeyMode:  "toggle",
-		DeviceID:    -1,
-		HistoryMode: HistoryRAM,
-		Theme:       ThemeDark,
+		DeviceID:     -1,
+		HistoryMode:  HistoryRAM,
+		HistoryLimit: 1000,
+		Theme:        ThemeDark,
 
 		CopyToClipboard: true,
 		AutoPaste:       true,
@@ -194,6 +199,9 @@ func (c *Config) normalize() {
 	if c.HistoryMode != HistoryDisk {
 		c.HistoryMode = HistoryRAM
 	}
+	if c.HistoryLimit < 0 {
+		c.HistoryLimit = d.HistoryLimit
+	}
 	if c.Theme != ThemeLight {
 		c.Theme = ThemeDark
 	}
@@ -233,6 +241,9 @@ func (c *Config) validate() error {
 	}
 	if c.HistoryMode != HistoryRAM && c.HistoryMode != HistoryDisk {
 		return fmt.Errorf("history mode must be %q or %q", HistoryRAM, HistoryDisk)
+	}
+	if c.HistoryLimit < 0 {
+		return fmt.Errorf("history limit must be 0 (no limit) or a positive number")
 	}
 	if c.Theme != ThemeDark && c.Theme != ThemeLight {
 		return fmt.Errorf("theme must be %q or %q", ThemeDark, ThemeLight)
