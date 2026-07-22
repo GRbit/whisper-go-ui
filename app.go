@@ -23,6 +23,7 @@ type App struct {
 	notifier *appNotifier
 	pipeline *Pipeline
 	hotkey   *HotkeyListener
+	applier  configApplier
 
 	// winVisible tracks window visibility for the tray left-click toggle
 	// (wails v2 has no visibility query). Tray actions update it directly;
@@ -47,6 +48,30 @@ func NewApp() *App {
 	a.notifier = newAppNotifier(a.tray)
 	a.pipeline = NewPipeline(a.cfg, a.history, a.notifier)
 	a.winVisible.Store(true) // the window starts visible
+
+	// Live-apply subscribers: how a saved (or startup-loaded) config change
+	// reaches each component. The hotkey subscriber joins in startup(),
+	// once the listener exists.
+	a.applier.Subscribe(func(_, cur Config) {
+		if cur.Debug {
+			logLevel.Set(slog.LevelDebug)
+		} else {
+			logLevel.Set(slog.LevelInfo)
+		}
+	})
+	a.applier.Subscribe(func(old, cur Config) {
+		if cur.HistoryLimit != old.HistoryLimit {
+			a.history.SetLimit(cur.HistoryLimit)
+		}
+		if cur.HistoryMode != old.HistoryMode {
+			a.history.SetMode(cur.HistoryMode)
+			// A mode switch can change the visible list (disk entries merge
+			// in); the mounted History tab reloads on this event.
+			if a.ctx != nil {
+				runtime.EventsEmit(a.ctx, "history:added")
+			}
+		}
+	})
 	return a
 }
 
@@ -58,10 +83,9 @@ func (a *App) startup(ctx context.Context) {
 	if err != nil {
 		slog.Warn("[INIT] Config problem (using defaults where needed)", "error", err)
 	}
+	prev := a.cfg.Get() // the NewApp defaults
 	a.cfg.Set(cfg)
-	if cfg.Debug {
-		logLevel.Set(slog.LevelDebug)
-	}
+	a.applier.Apply(prev, *cfg)
 
 	if err := portaudio.Initialize(); err != nil {
 		slog.Error("[INIT] PortAudio init failed", "error", err)
@@ -72,8 +96,6 @@ func (a *App) startup(ctx context.Context) {
 	}
 	slog.Info("[INIT] PortAudio devices found", "count", len(devices))
 
-	a.history.SetLimit(cfg.HistoryLimit)
-	a.history.SetMode(cfg.HistoryMode)
 	a.notifier.Bind(ctx)
 	a.pipeline.SetDevices(devices)
 
@@ -86,6 +108,20 @@ func (a *App) startup(ctx context.Context) {
 	a.hotkey = NewHotkeyListener(combo, a.pipeline.Toggle)
 	a.hotkey.SetDisabled(cfg.HotkeyDisabled)
 	go a.hotkey.Run()
+	a.applier.Subscribe(func(old, cur Config) {
+		if cur.HotkeyStr != old.HotkeyStr {
+			// validate() already parsed the combo; a parse error here means
+			// a programming bug, so it is only logged.
+			if combo, err := parseHotkey(cur.HotkeyStr); err == nil {
+				a.hotkey.SetCombo(combo)
+			} else {
+				slog.Error("[CFG] Saved hotkey failed to parse on apply", "hotkey", cur.HotkeyStr, "error", err)
+			}
+		}
+		if cur.HotkeyDisabled != old.HotkeyDisabled {
+			a.hotkey.SetDisabled(cur.HotkeyDisabled)
+		}
+	})
 
 	runtime.EventsOn(ctx, "window:visibility", func(args ...interface{}) {
 		if len(args) > 0 {
@@ -187,33 +223,7 @@ func (a *App) SaveConfig(c Config) error {
 
 	old := a.cfg.Get()
 	a.cfg.Set(&c)
-	if c.Debug {
-		logLevel.Set(slog.LevelDebug)
-	} else {
-		logLevel.Set(slog.LevelInfo)
-	}
-
-	// a.hotkey is nil until startup() finishes; the saved file is picked up
-	// there, so skipping the live re-apply is safe.
-	if a.hotkey != nil && c.HotkeyStr != old.HotkeyStr {
-		combo, err := parseHotkey(c.HotkeyStr)
-		if err != nil {
-			return err // unreachable: validate() already parsed it
-		}
-		a.hotkey.SetCombo(combo)
-	}
-	if a.hotkey != nil && c.HotkeyDisabled != old.HotkeyDisabled {
-		a.hotkey.SetDisabled(c.HotkeyDisabled)
-	}
-	if c.HistoryLimit != old.HistoryLimit {
-		a.history.SetLimit(c.HistoryLimit)
-	}
-	if c.HistoryMode != old.HistoryMode {
-		a.history.SetMode(c.HistoryMode)
-		// A mode switch can change the visible list (disk entries merge
-		// in); the History tab stays mounted and reloads on this event.
-		runtime.EventsEmit(a.ctx, "history:added")
-	}
+	a.applier.Apply(old, c)
 	return nil
 }
 
