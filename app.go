@@ -20,6 +20,7 @@ type App struct {
 	cfg      *configStore
 	history  *HistoryStore
 	tray     *Tray
+	notifier *appNotifier
 	pipeline *Pipeline
 	hotkey   *HotkeyListener
 
@@ -43,7 +44,8 @@ func NewApp() *App {
 	a.cfg.Set(defaultConfig())
 	a.history = NewHistoryStore(defaultConfig().HistoryMode, defaultConfig().HistoryLimit)
 	a.tray = NewTray()
-	a.pipeline = NewPipeline(a.cfg, a.history, a.tray)
+	a.notifier = newAppNotifier(a.tray)
+	a.pipeline = NewPipeline(a.cfg, a.history, a.notifier)
 	a.winVisible.Store(true) // the window starts visible
 	return a
 }
@@ -72,7 +74,8 @@ func (a *App) startup(ctx context.Context) {
 
 	a.history.SetLimit(cfg.HistoryLimit)
 	a.history.SetMode(cfg.HistoryMode)
-	a.pipeline.Start(ctx, devices)
+	a.notifier.Bind(ctx)
+	a.pipeline.SetDevices(devices)
 
 	combo, err := parseHotkey(cfg.HotkeyStr)
 	if err != nil {

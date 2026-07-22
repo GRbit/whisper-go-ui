@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -10,7 +9,6 @@ import (
 	"time"
 
 	"github.com/gordonklaus/portaudio"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"log/slog"
 )
 
@@ -43,30 +41,29 @@ func (s State) String() string {
 // reverting to waiting.
 const pastedDisplayTime = 2 * time.Second
 
-// Pipeline owns the record → transcribe → paste state machine.
+// Pipeline owns the record → transcribe → paste state machine. It reports
+// everything observable (state, errors, transcripts) through the Notifier
+// and knows nothing about the tray or the Wails runtime.
 type Pipeline struct {
 	cfg     *configStore
 	history *HistoryStore
-	tray    *Tray
+	notify  Notifier
 
 	mu        sync.Mutex
 	state     State
 	activeRec *Recorder
-	devices   []*portaudio.DeviceInfo // cached at startup
+	devices   []*portaudio.DeviceInfo // snapshot; refreshed by RescanDevices
 
 	pastedGen atomic.Uint64 // invalidates stale Pasted→Idle timers
-
-	ctx context.Context // wails context for EventsEmit; set in Start
 }
 
-func NewPipeline(cfg *configStore, history *HistoryStore, tray *Tray) *Pipeline {
-	return &Pipeline{cfg: cfg, history: history, tray: tray}
+func NewPipeline(cfg *configStore, history *HistoryStore, notify Notifier) *Pipeline {
+	return &Pipeline{cfg: cfg, history: history, notify: notify}
 }
 
-// Start stores the wails context and the cached device list.
-func (p *Pipeline) Start(ctx context.Context, devices []*portaudio.DeviceInfo) {
+// SetDevices stores the device list scanned at startup.
+func (p *Pipeline) SetDevices(devices []*portaudio.DeviceInfo) {
 	p.mu.Lock()
-	p.ctx = ctx
 	p.devices = devices
 	p.mu.Unlock()
 }
@@ -115,27 +112,23 @@ func (p *Pipeline) RescanDevices() ([]*portaudio.DeviceInfo, error) {
 	return devices, nil
 }
 
-// setState updates the state and mirrors it to the tray and the frontend.
+// setState updates the state and announces it through the notifier.
 func (p *Pipeline) setState(s State) {
 	p.mu.Lock()
 	old := p.state
 	p.state = s
-	ctx := p.ctx
 	p.mu.Unlock()
 
-	p.announceState(old, s, ctx)
+	p.announceState(old, s)
 }
 
-// announceState logs a transition and mirrors it to the tray and frontend.
-// Called outside the lock: tray and EventsEmit must not run under p.mu.
-func (p *Pipeline) announceState(old, s State, ctx context.Context) {
+// announceState logs a transition and reports it to the notifier.
+// Called outside the lock: notifier implementations must not run under p.mu.
+func (p *Pipeline) announceState(old, s State) {
 	if old != s {
 		slog.Info("[STATE] Transition", "from", old.String(), "to", s.String())
 	}
-	p.tray.SetState(s)
-	if ctx != nil {
-		runtime.EventsEmit(ctx, "state:changed", s.String())
-	}
+	p.notify.StateChanged(s)
 }
 
 // expirePasted reverts Pasted to Idle when the 2s display timer fires,
@@ -151,20 +144,14 @@ func (p *Pipeline) expirePasted(gen uint64) {
 		return
 	}
 	p.state = StateIdle
-	ctx := p.ctx
 	p.mu.Unlock()
 
-	p.announceState(StatePasted, StateIdle, ctx)
+	p.announceState(StatePasted, StateIdle)
 }
 
-// emitError surfaces a pipeline error to the frontend.
+// emitError surfaces a pipeline error through the notifier.
 func (p *Pipeline) emitError(err error) {
-	p.mu.Lock()
-	ctx := p.ctx
-	p.mu.Unlock()
-	if ctx != nil {
-		runtime.EventsEmit(ctx, "pipeline:error", err.Error())
-	}
+	p.notify.PipelineError(err)
 }
 
 // Toggle is the hotkey action: Idle starts recording, Recording stops it,
@@ -215,11 +202,10 @@ func (p *Pipeline) startRecording() {
 	p.activeRec = rec
 	old := p.state
 	p.state = StateRecording
-	ctx := p.ctx
 	p.mu.Unlock()
 
 	slog.Info("[REC] Recording started", "device", device.Name)
-	p.announceState(old, StateRecording, ctx)
+	p.announceState(old, StateRecording)
 	rec.Start()
 }
 
@@ -231,7 +217,6 @@ func (p *Pipeline) stopRecording() {
 	if state == StateRecording {
 		p.state = StateProcessing
 	}
-	ctx := p.ctx
 	p.mu.Unlock()
 
 	if rec == nil {
@@ -245,7 +230,7 @@ func (p *Pipeline) stopRecording() {
 		return
 	}
 
-	p.announceState(state, StateProcessing, ctx)
+	p.announceState(state, StateProcessing)
 	go p.processRecording(rec)
 }
 
@@ -310,13 +295,7 @@ func (p *Pipeline) processRecording(rec *Recorder) {
 
 	entry := HistoryEntry{Time: time.Now(), Text: transcript, DurationSec: audioDur.Seconds()}
 	p.history.Add(entry)
-
-	p.mu.Lock()
-	ctx2 := p.ctx
-	p.mu.Unlock()
-	if ctx2 != nil {
-		runtime.EventsEmit(ctx2, "history:added", entry)
-	}
+	p.notify.HistoryAdded(entry)
 
 	// No "pasted" state to announce when delivery failed or is disabled.
 	if pasteErr != nil || (!pasted && !cfg.CopyToClipboard) {

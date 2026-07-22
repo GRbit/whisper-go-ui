@@ -11,14 +11,47 @@ import (
 	"time"
 )
 
-// newTestPipeline builds a Pipeline with no Wails context (setState skips
-// EventsEmit when ctx is nil) and a not-ready tray (SetState buffers).
-func newTestPipeline(t *testing.T) *Pipeline {
+// fakeNotifier records every pipeline notification for assertions.
+type fakeNotifier struct {
+	mu     sync.Mutex
+	states []State
+	errors []error
+	added  []HistoryEntry
+}
+
+func (f *fakeNotifier) StateChanged(s State) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.states = append(f.states, s)
+}
+
+func (f *fakeNotifier) PipelineError(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.errors = append(f.errors, err)
+}
+
+func (f *fakeNotifier) HistoryAdded(e HistoryEntry) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.added = append(f.added, e)
+}
+
+func (f *fakeNotifier) statesSeen() []State {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]State(nil), f.states...)
+}
+
+// newTestPipeline builds a Pipeline against a fakeNotifier, so tests can
+// assert exactly which states and errors were announced.
+func newTestPipeline(t *testing.T) (*Pipeline, *fakeNotifier) {
 	t.Helper()
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	cfg := &configStore{}
 	cfg.Set(defaultConfig())
-	return NewPipeline(cfg, NewHistoryStore(HistoryRAM, 0), NewTray())
+	fake := &fakeNotifier{}
+	return NewPipeline(cfg, NewHistoryStore(HistoryRAM, 0), fake), fake
 }
 
 // TestStopRecordingKeepsProcessingState guards the double-press race: two
@@ -27,7 +60,7 @@ func newTestPipeline(t *testing.T) *Pipeline {
 // to Processing, the second finds activeRec == nil. It must not force the
 // state back to Idle while transcription is still running.
 func TestStopRecordingKeepsProcessingState(t *testing.T) {
-	p := newTestPipeline(t)
+	p, fake := newTestPipeline(t)
 
 	// State after the first press won the race: Processing, recorder taken.
 	p.mu.Lock()
@@ -39,6 +72,12 @@ func TestStopRecordingKeepsProcessingState(t *testing.T) {
 
 	if got := p.State(); got != StateProcessing {
 		t.Errorf("state after duplicate stopRecording = %v, want %v", got, StateProcessing)
+	}
+	// The tray/UI must not even see a flicker to Idle.
+	for _, s := range fake.statesSeen() {
+		if s == StateIdle {
+			t.Errorf("duplicate stopRecording announced Idle to the notifier")
+		}
 	}
 }
 
@@ -76,7 +115,7 @@ func TestStopRecordingLogsTransition(t *testing.T) {
 	slog.SetDefault(newLogger(w))
 	defer slog.SetDefault(prev)
 
-	p := newTestPipeline(t)
+	p, _ := newTestPipeline(t)
 	rec := NewRecorder(nil)
 	go func() {
 		<-rec.stopCh
@@ -106,7 +145,7 @@ func TestStopRecordingLogsTransition(t *testing.T) {
 // a current-generation timer reverts Pasted to Idle; a stale-generation
 // timer (a recording took over in the meantime) must not touch the state.
 func TestExpirePasted(t *testing.T) {
-	p := newTestPipeline(t)
+	p, _ := newTestPipeline(t)
 
 	p.mu.Lock()
 	p.state = StatePasted
@@ -142,7 +181,7 @@ func TestExpirePasted(t *testing.T) {
 // two run in, the state must end up Recording; with the old two-step
 // check this failed whenever the takeover hit the window.
 func TestExpirePastedTakeoverRace(t *testing.T) {
-	p := newTestPipeline(t)
+	p, _ := newTestPipeline(t)
 
 	for i := 0; i < 5000; i++ {
 		p.mu.Lock()
@@ -175,7 +214,7 @@ func TestExpirePastedTakeoverRace(t *testing.T) {
 // Terminate during an open capture stream is a cgo use-after-teardown, so
 // a rescan must be refused unless the pipeline is Idle or Pasted.
 func TestRescanDevicesRefusedWhileBusy(t *testing.T) {
-	p := newTestPipeline(t)
+	p, _ := newTestPipeline(t)
 	for _, s := range []State{StateRecording, StateProcessing} {
 		p.mu.Lock()
 		p.state = s
@@ -190,7 +229,7 @@ func TestRescanDevicesRefusedWhileBusy(t *testing.T) {
 // PortAudio library (no stream is opened; just a Terminate+Init+list
 // cycle). It asserts the pipeline snapshot is updated to the same list.
 func TestRescanDevicesIdle(t *testing.T) {
-	p := newTestPipeline(t)
+	p, _ := newTestPipeline(t)
 	devices, err := p.RescanDevices()
 	if err != nil {
 		t.Fatalf("RescanDevices while idle: %v", err)
@@ -210,7 +249,7 @@ func TestRescanDevicesIdle(t *testing.T) {
 // the result. If StopActiveRecorder only signals Stop without waiting for
 // the result, it returns during that delay and sees finished == false.
 func TestStopActiveRecorderWaitsForCapture(t *testing.T) {
-	p := newTestPipeline(t)
+	p, _ := newTestPipeline(t)
 
 	rec := NewRecorder(nil) // capture never started; we fake its goroutine
 	var finished atomic.Bool
@@ -237,7 +276,7 @@ func TestStopActiveRecorderWaitsForCapture(t *testing.T) {
 // half of the rec == nil branch: if the state really is Recording but the
 // recorder is gone, the pipeline must fall back to Idle, not get stuck.
 func TestStopRecordingWithoutRecorderResetsFromRecording(t *testing.T) {
-	p := newTestPipeline(t)
+	p, _ := newTestPipeline(t)
 
 	p.mu.Lock()
 	p.state = StateRecording
