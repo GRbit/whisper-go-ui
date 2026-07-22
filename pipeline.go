@@ -41,7 +41,7 @@ func (s State) String() string {
 // reverting to waiting.
 const pastedDisplayTime = 2 * time.Second
 
-// Pipeline owns the record → transcribe → paste state machine. It reports
+// Pipeline owns the record -> transcribe -> paste state machine. It reports
 // everything observable (state, errors, transcripts) through the Notifier
 // and knows nothing about the tray or the Wails runtime.
 type Pipeline struct {
@@ -54,7 +54,7 @@ type Pipeline struct {
 	activeRec *Recorder
 	devices   []*portaudio.DeviceInfo // snapshot; refreshed by RescanDevices
 
-	pastedGen atomic.Uint64 // invalidates stale Pasted→Idle timers
+	pastedGen atomic.Uint64 // invalidates stale Pasted->Idle timers
 }
 
 func NewPipeline(cfg *configStore, history *HistoryStore, notify Notifier) *Pipeline {
