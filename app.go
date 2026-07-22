@@ -23,8 +23,6 @@ type App struct {
 	pipeline *Pipeline
 	hotkey   *HotkeyListener
 
-	devices []*portaudio.DeviceInfo
-
 	// winVisible tracks window visibility for the tray left-click toggle
 	// (wails v2 has no visibility query). Tray actions update it directly;
 	// the frontend confirms via "window:visibility" page-visibility events,
@@ -66,14 +64,14 @@ func (a *App) startup(ctx context.Context) {
 	if err := portaudio.Initialize(); err != nil {
 		slog.Error("[INIT] PortAudio init failed", "error", err)
 	}
-	a.devices, err = portaudio.Devices()
+	devices, err := portaudio.Devices()
 	if err != nil {
 		slog.Error("[INIT] Listing PortAudio devices failed", "error", err)
 	}
-	slog.Info("[INIT] PortAudio devices found", "count", len(a.devices))
+	slog.Info("[INIT] PortAudio devices found", "count", len(devices))
 
 	a.history.SetMode(cfg.HistoryMode)
-	a.pipeline.Start(ctx, a.devices)
+	a.pipeline.Start(ctx, devices)
 
 	combo, err := parseHotkey(cfg.HotkeyStr)
 	if err != nil {
@@ -236,7 +234,18 @@ func (a *App) CaptureHotkey() string {
 
 // ListInputDevices returns all PortAudio input devices for the Settings dropdown.
 func (a *App) ListInputDevices() []AudioDevice {
-	return listInputDevices(a.devices)
+	return listInputDevices(a.pipeline.Devices())
+}
+
+// RefreshInputDevices rescans the hardware (PortAudio only sees hotplugged
+// devices after a Terminate+Initialize cycle) and returns the new list.
+// Refused while a recording or transcription is in flight.
+func (a *App) RefreshInputDevices() ([]AudioDevice, error) {
+	devices, err := a.pipeline.RescanDevices()
+	if err != nil {
+		return nil, err
+	}
+	return listInputDevices(devices), nil
 }
 
 // GetHistory returns transcripts, newest first.

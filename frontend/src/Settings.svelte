@@ -6,6 +6,7 @@
     ValidateHotkey,
     CaptureHotkey,
     ListInputDevices,
+    RefreshInputDevices,
   } from '../wailsjs/go/main/App.js'
   import { main } from '../wailsjs/go/models'
 
@@ -78,6 +79,24 @@
   // Instant preview; persisted only on Save (reverts on restart otherwise).
   function applyTheme() {
     if (cfg) document.documentElement.dataset.theme = cfg.theme
+  }
+
+  let rescanning = $state(false)
+  let rescanError = $state('')
+
+  // PortAudio only sees hotplugged microphones after a full backend
+  // rescan; the backend refuses while recording or transcribing.
+  async function rescanDevices() {
+    if (rescanning) return
+    rescanning = true
+    rescanError = ''
+    try {
+      devices = (await RefreshInputDevices()) ?? []
+    } catch (e: any) {
+      rescanError = String(e)
+    } finally {
+      rescanning = false
+    }
   }
 
   function deviceLabel(d: main.AudioDevice): string {
@@ -228,13 +247,22 @@
       <h2>Audio input</h2>
       <label>
         <span>Device</span>
-        <select bind:value={cfg.deviceId}>
-          <option value={-1}>Auto (PulseAudio / system default)</option>
-          {#each devices as d}
-            <option value={d.id}>{deviceLabel(d)}</option>
-          {/each}
-        </select>
+        <div class="device-row">
+          <select bind:value={cfg.deviceId}>
+            <option value={-1}>Auto (PulseAudio / system default)</option>
+            {#each devices as d}
+              <option value={d.id}>{deviceLabel(d)}</option>
+            {/each}
+          </select>
+          <button type="button" class="capture" onclick={rescanDevices} disabled={rescanning}
+            title="Rescan audio hardware (picks up devices plugged in after startup)">
+            {rescanning ? 'Scanning…' : 'Rescan'}
+          </button>
+        </div>
       </label>
+      {#if rescanError}
+        <p class="field-error">{rescanError}</p>
+      {/if}
     </section>
 
     <section>
@@ -331,6 +359,15 @@
   .hotkey-row {
     display: flex;
     gap: 8px;
+  }
+
+  .device-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .device-row select {
+    flex: 1;
   }
 
   .hotkey-row input {

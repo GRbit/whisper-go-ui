@@ -77,6 +77,44 @@ func (p *Pipeline) State() State {
 	return p.state
 }
 
+// Devices returns the current device list snapshot.
+func (p *Pipeline) Devices() []*portaudio.DeviceInfo {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.devices
+}
+
+// RescanDevices re-enumerates PortAudio devices. PortAudio only notices
+// hotplugged hardware after a full Terminate+Initialize cycle, and Terminate
+// must never run while a capture stream is open. Holding p.mu with the state
+// at Idle or Pasted guarantees that: the capture goroutine has exited before
+// the state leaves Processing, and startRecording needs the lock to start a
+// new one.
+func (p *Pipeline) RescanDevices() ([]*portaudio.DeviceInfo, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.state != StateIdle && p.state != StatePasted {
+		return nil, fmt.Errorf("cannot rescan audio devices while %s", p.state)
+	}
+
+	slog.Info("[DEV] Rescanning PortAudio devices")
+	if err := portaudio.Terminate(); err != nil {
+		// Not fatal: happens when PortAudio was never initialized.
+		slog.Warn("[DEV] PortAudio terminate before rescan failed", "error", err)
+	}
+	if err := portaudio.Initialize(); err != nil {
+		return nil, fmt.Errorf("portaudio initialize: %w", err)
+	}
+	devices, err := portaudio.Devices()
+	if err != nil {
+		return nil, fmt.Errorf("portaudio devices: %w", err)
+	}
+	p.devices = devices
+	slog.Info("[DEV] Device rescan complete", "count", len(devices))
+	return devices, nil
+}
+
 // setState updates the state and mirrors it to the tray and the frontend.
 func (p *Pipeline) setState(s State) {
 	p.mu.Lock()

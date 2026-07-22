@@ -14,6 +14,8 @@ export function GetState():Promise<string>;
 
 export function ListInputDevices():Promise<Array<main.AudioDevice>>;
 
+export function RefreshInputDevices():Promise<Array<main.AudioDevice>>;
+
 export function SaveConfig(arg1:main.Config):Promise<void>;
 
 export function ToggleRecording():Promise<void>;

@@ -171,6 +171,35 @@ func TestExpirePastedTakeoverRace(t *testing.T) {
 	}
 }
 
+// TestRescanDevicesRefusedWhileBusy guards the rescan safety property:
+// Terminate during an open capture stream is a cgo use-after-teardown, so
+// a rescan must be refused unless the pipeline is Idle or Pasted.
+func TestRescanDevicesRefusedWhileBusy(t *testing.T) {
+	p := newTestPipeline(t)
+	for _, s := range []State{StateRecording, StateProcessing} {
+		p.mu.Lock()
+		p.state = s
+		p.mu.Unlock()
+		if _, err := p.RescanDevices(); err == nil {
+			t.Errorf("RescanDevices in state %v: want error, got nil", s)
+		}
+	}
+}
+
+// TestRescanDevicesIdle exercises the allowed path against the real
+// PortAudio library (no stream is opened; just a Terminate+Init+list
+// cycle). It asserts the pipeline snapshot is updated to the same list.
+func TestRescanDevicesIdle(t *testing.T) {
+	p := newTestPipeline(t)
+	devices, err := p.RescanDevices()
+	if err != nil {
+		t.Fatalf("RescanDevices while idle: %v", err)
+	}
+	if got := len(p.Devices()); got != len(devices) {
+		t.Errorf("pipeline snapshot has %d devices, rescan returned %d", got, len(devices))
+	}
+}
+
 // TestStopActiveRecorderWaitsForCapture guards the shutdown teardown order:
 // shutdown() calls StopActiveRecorder and then portaudio.Terminate, so
 // StopActiveRecorder must not return while the capture goroutine may still

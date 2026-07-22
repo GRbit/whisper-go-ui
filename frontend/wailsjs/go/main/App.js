@@ -26,6 +26,10 @@ export function ListInputDevices() {
   return window['go']['main']['App']['ListInputDevices']();
 }
 
+export function RefreshInputDevices() {
+  return window['go']['main']['App']['RefreshInputDevices']();
+}
+
 export function SaveConfig(arg1) {
   return window['go']['main']['App']['SaveConfig'](arg1);
 }
