@@ -234,6 +234,53 @@ func (p *Pipeline) stopRecording() {
 	go p.processRecording(rec)
 }
 
+// Abort cancels a recording in progress: the captured audio is discarded
+// and nothing is sent to the ASR server. In any other state it is a no-op.
+// The recorder is drained through StateProcessing so the RescanDevices
+// invariant holds: the capture goroutine has exited before the state
+// returns to Idle.
+func (p *Pipeline) Abort() {
+	p.mu.Lock()
+	state := p.state
+	if state != StateRecording {
+		p.mu.Unlock()
+		slog.Info("[ACTION] Abort ignored: not recording", "state", state.String())
+		return
+	}
+	rec := p.activeRec
+	p.activeRec = nil
+	p.state = StateProcessing
+	p.mu.Unlock()
+
+	if rec == nil {
+		// A stop that took the recorder also left Recording under the same
+		// lock, so Recording with no recorder means it was genuinely lost:
+		// fall back to Idle instead of sticking in Processing.
+		slog.Warn("[REC] Abort called with no active recorder")
+		p.setState(StateIdle)
+		return
+	}
+
+	p.announceState(state, StateProcessing)
+	go p.discardRecording(rec)
+}
+
+// discardRecording drains an aborted recorder and throws the audio away.
+func (p *Pipeline) discardRecording(rec *Recorder) {
+	rec.Stop()
+	wavPath, audioDur, err := rec.Wait()
+	if err != nil {
+		slog.Debug("[REC] Aborted recorder finished with error", "error", err)
+	}
+	if wavPath != "" {
+		if rmErr := os.Remove(wavPath); rmErr != nil {
+			slog.Debug("[REC] Removing aborted WAV failed", "path", wavPath, "error", rmErr)
+		}
+	}
+	slog.Info("[REC] Recording aborted: audio discarded", "duration", audioDur)
+	p.setState(StateIdle)
+}
+
 // processRecording is the async pipeline: stop → WAV → ASR → paste.
 func (p *Pipeline) processRecording(rec *Recorder) {
 	cfg := p.cfg.Get()

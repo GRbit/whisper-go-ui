@@ -3,7 +3,7 @@
   import Settings from './Settings.svelte'
   import History from './History.svelte'
   import InfoModal from './InfoModal.svelte'
-  import { GetConfig, GetState, ToggleRecording } from '../wailsjs/go/main/App.js'
+  import { AbortRecording, GetConfig, GetState, ToggleRecording } from '../wailsjs/go/main/App.js'
   import { EventsOn, EventsEmit, Quit } from '../wailsjs/runtime/runtime.js'
 
   let tab: 'settings' | 'history' = $state('settings')
@@ -72,6 +72,11 @@
     <button class="record-btn" onclick={() => ToggleRecording()}>
       {appState === 'recording' ? 'Stop' : 'Record'}
     </button>
+    {#if appState === 'recording'}
+      <button class="abort-btn" onclick={() => AbortRecording()} title="Discard the recording without transcribing">
+        Abort
+      </button>
+    {/if}
   </div>
 </header>
 
@@ -150,6 +155,19 @@
     border: none;
     border-radius: 6px;
     padding: 7px 16px;
+  }
+
+  .abort-btn {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 14px;
+  }
+
+  .abort-btn:hover {
+    color: var(--red);
+    border-color: var(--red);
   }
 
   .error-bar {

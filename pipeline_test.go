@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -269,6 +271,79 @@ func TestStopActiveRecorderWaitsForCapture(t *testing.T) {
 
 	if !finished.Load() {
 		t.Error("StopActiveRecorder returned before the capture goroutine finished")
+	}
+}
+
+// TestAbortDiscardsRecording covers the abort path: from Recording, Abort
+// must drain the recorder, delete the WAV file, and settle at Idle without
+// contacting ASR (no pipeline error despite the unreachable default ASR URL)
+// and without adding a history entry.
+//
+// Test mechanics: a fake capture goroutine answers the Stop signal with a
+// pre-created WAV file, so no PortAudio stream is involved; the test polls
+// for the Idle settle because the drain runs in a goroutine.
+func TestAbortDiscardsRecording(t *testing.T) {
+	p, fake := newTestPipeline(t)
+
+	wavPath := filepath.Join(t.TempDir(), "aborted.wav")
+	if err := os.WriteFile(wavPath, []byte("fake wav"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := NewRecorder(nil)
+	go func() {
+		<-rec.stopCh
+		rec.resCh <- recResult{wavPath: wavPath, duration: time.Second}
+	}()
+
+	p.mu.Lock()
+	p.state = StateRecording
+	p.activeRec = rec
+	p.mu.Unlock()
+
+	p.Abort()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for p.State() != StateIdle && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	if got := p.State(); got != StateIdle {
+		t.Fatalf("state after Abort = %v, want %v", got, StateIdle)
+	}
+	if _, err := os.Stat(wavPath); !os.IsNotExist(err) {
+		t.Errorf("aborted WAV still exists (stat err = %v), want removed", err)
+	}
+	fake.mu.Lock()
+	errs, added := len(fake.errors), len(fake.added)
+	fake.mu.Unlock()
+	if errs != 0 {
+		t.Errorf("abort produced %d pipeline errors, want 0 (audio must not reach ASR)", errs)
+	}
+	if added != 0 {
+		t.Errorf("abort added %d history entries, want 0", added)
+	}
+}
+
+// TestAbortIgnoredOutsideRecording: Abort in any non-Recording state must
+// leave the state untouched and announce nothing, so a late Abort click
+// (e.g. after transcription already started) cannot disturb the pipeline.
+func TestAbortIgnoredOutsideRecording(t *testing.T) {
+	p, fake := newTestPipeline(t)
+
+	for _, s := range []State{StateIdle, StateProcessing, StatePasted} {
+		p.mu.Lock()
+		p.state = s
+		p.mu.Unlock()
+
+		p.Abort()
+
+		if got := p.State(); got != s {
+			t.Errorf("Abort in state %v changed state to %v, want unchanged", s, got)
+		}
+		if seen := fake.statesSeen(); len(seen) != 0 {
+			t.Errorf("Abort in state %v announced states %v, want none", s, seen)
+		}
 	}
 }
 

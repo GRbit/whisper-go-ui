@@ -284,3 +284,10 @@ func (a *App) GetState() string {
 func (a *App) ToggleRecording() {
 	a.pipeline.Toggle()
 }
+
+// AbortRecording cancels an in-progress recording: the audio is discarded
+// instead of being sent to the ASR server.
+func (a *App) AbortRecording() {
+	slog.Debug("[ACTION] Abort recording requested from UI")
+	a.pipeline.Abort()
+}
